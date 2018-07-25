@@ -3,12 +3,37 @@ from __future__ import print_function
 import os
 import math
 import json
+import random
 import logging
 import numpy as np
 from PIL import Image
 import cv2
 from datetime import datetime
 import scipy
+
+
+def random_lhs(min_bound,max_bound,dimensions,number_samples=1):
+    import lhsmdu
+    r_range = abs(max_bound-min_bound)
+    lolo = r_range*np.array(lhsmdu.sample(dimensions,number_samples)) + min_bound
+    required_list = []
+    for ii in range(number_samples):
+        required_list.append(lolo[:,ii].reshape(-1))
+    return required_list
+
+def shuffle_list(*ls):
+    l =list(zip(*ls))
+
+    random.shuffle(l)
+    return zip(*l)
+def splitting_train_test(all_Xs,all_Ys,percentage,shuffle=True):
+    splitting_index = int(percentage*len(all_Xs)/100.0)
+    train_x, test_x = all_Xs[0:splitting_index], all_Xs[splitting_index+1::]
+    train_y, test_y = all_Ys[0:splitting_index], all_Ys[splitting_index+1::]
+    if shuffle:
+        train_x , train_y = shuffle_list(train_x,train_y)
+        test_x , test_y = shuffle_list(test_x,test_y)
+    return list(train_x) ,list(train_y) , list(test_x) , list(test_y)
 
 def prepare_dirs_and_logger(config):
     formatter = logging.Formatter("%(asctime)s:%(levelname)s::%(message)s")
@@ -62,7 +87,7 @@ def rank(array):
     return len(array.shape)
 
 def make_grid(tensor, nrow=8, padding=2,
-              normalize=False, scale_each=False):
+                normalize=False, scale_each=False):
     """Code based on https://github.com/pytorch/vision/blob/master/torchvision/utils.py"""
     nmaps = tensor.shape[0]
     xmaps = min(nrow, nmaps)
@@ -82,7 +107,7 @@ def make_grid(tensor, nrow=8, padding=2,
     return grid
 
 def save_image(tensor, filename, nrow=8, padding=2,
-               normalize=False, scale_each=False):
+                 normalize=False, scale_each=False):
     ndarr = make_grid(tensor, nrow=nrow, padding=padding,
                             normalize=normalize, scale_each=scale_each)
     im = Image.fromarray(ndarr)
@@ -242,17 +267,18 @@ def read_images_to_np(path,h,w,extension="all",allowmax=False,maxnbr=0,d_type=np
         exit_subdir = False
         max_nbr_pictures = maxnbr
         for filename in filenames:
-          if not exit_subdir and (((extension is not "all") and filename.lower().endswith("."+extension) ) or extension is "all") :
-            filepath = os.path.join(root, filename)
-            image = cv2.imread(filepath)
+            if not exit_subdir and (((extension is not "all") and filename.lower().endswith("."+extension) ) or extension is "all") :
+                filepath = os.path.join(root, filename)
+                image = cv2.imread(filepath)
             if image is None :
-              continue
+                continue
             if mode is "RGB":
-              image = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
+                image = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
             image_resized = resize_image(image, h, w,resize_mode="crop") 
             images.append(image_resized)
             if allowmax:
-              max_nbr_pictures = max_nbr_pictures-1
-              if max_nbr_pictures is 0:
-                exit_subdir = True
+                max_nbr_pictures = max_nbr_pictures-1
+                if max_nbr_pictures is 0:
+                    exit_subdir = True
+    print("Finished reading the %d images ..."%(len(images)))
     return images

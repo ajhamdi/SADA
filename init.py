@@ -62,8 +62,7 @@ def rotate_object(obj_name="Cube",rotation=(0,0,0)):
 # a function that takes 7D vector ( 3 RGBcolors , 2 xy position , 1 z rotations ) and perform that .. all the input is between -1,1
 def basic_experiment(obj_name="Cube",vec=[-0.95,-0.95,0.8,0,0,0]):
 	rotate_object(obj_name,(0,0,180*vec[5]))
-	scale_object(obj_name=obj_name,scale=(1.4,1.4,1.4))
-	# scale_object(obj_name,(vec[6],vec[6],vec[6]))
+	# scale_object(obj_name=obj_name,scale=(1.4,1.4,1.4))
 	change_position(obj_name,(7*vec[3],7*vec[4],0))
 	color_object(obj_name,((vec[0]+1)/2,(vec[1]+1)/2,(vec[2]+1)/2))
 

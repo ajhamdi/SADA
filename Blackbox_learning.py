@@ -1,3 +1,4 @@
+
 import numpy as np
 import os
 import math
@@ -29,71 +30,11 @@ import scipy.io as sio
 import tensorflow as tf
 from skimage.util.shape import view_as_blocks
 slim = tf.contrib.slim
-from numbers import Number
-from subprocess import Popen, PIPE
+import imageio
 
 
-class Blender(object):
-  def __init__(self, py_file, blend_file=None, *args):
-    self._args = list(args)
-    self._blend_file = blend_file
-    self._commands = []
 
-    # read code and register all top-level non-hidden functions
-    with open(py_file, 'r') as file:
-      self._code = file.read() + '\n' * 2
-      for line in self._code.splitlines():
-        if line.startswith('def ') and line[4] != '_':
-          self._register(line[4:line.find('(')])
 
-  def __call__(self, blender_func_name, *args, **kwargs):
-    args = str(args)[1:-1] + ',' if len(args) > 0 else ''
-    kwargs = ''.join([k + '=' + repr(v) + ',' for k, v in kwargs.items()])
-    cmd = blender_func_name + '(' + (args + kwargs)[:-1] + ')'
-    self._commands.append(cmd)
-
-  def execute(self, timeout=None, encoding='utf-8'):
-    # command to run blender in the background as a python console
-    cmd = ['blender', '--background', '--python-console'] + self._args
-    # setup a *.blend file to load when running blender
-    if self._blend_file is not None:
-      cmd.insert(1, self._blend_file)
-    # compile the source code from the py_file and the stacked commands
-    code = self._code + ''.join(l + '\n' for l in self._commands)
-    byte_code = bytearray(code, encoding)
-    # run blender and the compiled source code
-    p = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    out, err = p.communicate(byte_code, timeout=timeout)
-    # get the output and print it
-    out = out.decode(encoding)
-    err = err.decode(encoding)
-    skip = len(self._code.splitlines())
-    Blender._print(out, err, skip, self._commands)
-    # empty the commands list
-    self._commands = []
-
-  def _register(self, func):
-    call = lambda *a, **k: self(func, *a, **k)
-    setattr(self, func, call)
-
-  def _print(out, err, skip, commands):
-    def replace(out, lst):
-      lst = [''] * lst if isinstance(lst, Number) else lst
-      for string in lst:
-        i, j = out.find('>>> '), out.find('... ')
-        ind = max(i, j) if min(i, j) == -1 else min(i, j)
-        out = out[:ind] + string + out[ind + 4:]
-      return out
-    out = replace(out, skip)
-    out = replace(out, ['${ ' + c + ' }$\n' for c in commands])
-    print('${Running on Blender}$')
-    out = out[:-19]
-    print(out)
-    err = err[err.find('(InteractiveConsole)') + 22:]
-    if err:
-      print(err)
-    print('${Blender Done}$')
-    return out, err
 
 
 
@@ -106,25 +47,28 @@ def objective_function(x,output_size):
 
   return output
 
-def dicrminator_cnn(x,conv_input_size, output_size, repeat_num , data_format,reuse=False):
+def dicrminator_cnn(x,conv_input_size, output_size, repeat_num ,reuse=False):
   with tf.variable_scope("oracle") as scope:
     if reuse:
       scope.reuse_variables()
     # Encoder
-    x = slim.conv2d(x, conv_input_size, 3, 1, activation_fn=tf.nn.elu, data_format=data_format)
+    x = slim.conv2d(x, conv_input_size, 3, 1, activation_fn=tf.nn.elu)
 
     prev_channel_num = conv_input_size
     for idx in range(repeat_num):
       channel_num = conv_input_size * (idx + 1)
-      x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu, data_format=data_format)
-      x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu, data_format=data_format)
+      x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu)
+      x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu)
       if idx < repeat_num - 1:
-        x = slim.conv2d(x, channel_num, 3, 2, activation_fn=tf.nn.elu, data_format=data_format)
+        x = slim.conv2d(x, channel_num, 3, 2, activation_fn=tf.nn.elu)
         #x = tf.contrib.layers.max_pool2d(x, [2, 2], [2, 2], padding='VALID')
 
-    x = tf.reshape(x, [-1, np.prod([8, 8, channel_num])])
-    z = x = slim.fully_connected(x, output_size, activation_fn=None)
-    return z
+    # x = tf.reshape(x, [-1, np.prod([8, 8, channel_num])])
+    # x = tf.reshape(x, [x.shape[0], -1])
+    x = slim.flatten(x)
+    z = slim.fully_connected(x, output_size, activation_fn=None)
+    z_prob = tf.nn.sigmoid(z)
+    return z , z_prob
 
 
 def dicrminator_ann(x,output_size,reuse=False):
@@ -145,7 +89,8 @@ def generator_ann(x,output_size,min_bound=-1,max_bound=1):
     output = slim.fully_connected(output, 3*output_size, scope='objective/fc_3')
     output = slim.fully_connected(output, 3*output_size, scope='objective/fc_4')
     output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_5')
-    contrained_output =   range_required * tf.nn.sigmoid(output) + np.array(min_bound* tf.ones_like(output)).astype(mp.float64)
+    # contrained_output =   range_required * tf.nn.sigmoid(output) + min_bound* tf.ones_like(output)
+    contrained_output = tf.tanh(output)
   return contrained_output
 
 
@@ -161,6 +106,9 @@ def black_box(input_vector,output_size=256,global_step=0,frames_path=None,params
   # images = read_images_to_np(frames_path,output_size,output_size,extension="all",allowmax=True,maxnbr=1000,d_type=np.float32,mode="RGB")
   return image
 
+def black_box_batch(input_vectors,output_size=256,global_step=0,frames_path=None,params=None):
+  images = [black_box(np.array(input_vector),output_size,global_step,frames_path,params) for input_vector in input_vectors]
+  return images
 
 
 
@@ -180,11 +128,16 @@ class BlackBoxOptimizer():
     self.generation_no = 1
     self.frames_path = os.path.join(base_path,"frames")
     self.generated_path = os.path.join(base_path,"generated")
+    self.checkpoint_path = os.path.join(base_path,"checkpoint")
     self.frames_log_dir = os.path.join(self.frames_path,self.exp_type+"_%d"%(self.exp_no))
     self.generated_frames_train_dir = os.path.join(self.generated_path,"train_%d"%(self.generation_no))
-    self.generated_frames_test_dir = os.path.join(self.generated_path,"G_%d_test_"%(self.exp_no))
+    self.generated_frames_valid_dir = os.path.join(self.generated_path,"valid_%d"%(self.generation_no))
+    self.generated_frames_test_dir = os.path.join(self.generated_path,"G_%d_test_%d"%(self.generation_no,self.exp_no))
     self.train_log_dir = os.path.join(base_path,'logs',self.exp_type+"_%d"%(self.exp_no))
     if not tf.gfile.Exists(self.train_log_dir):
+      tf.gfile.MakeDirs(self.train_log_dir)
+    else :
+      shutil.rmtree(self.train_log_dir, ignore_errors=True)
       tf.gfile.MakeDirs(self.train_log_dir)
     if not tf.gfile.Exists(self.frames_log_dir):
       tf.gfile.MakeDirs(self.frames_log_dir)
@@ -200,315 +153,39 @@ class BlackBoxOptimizer():
     # self.random_no = np.abs(np.random.randint(self.DATA_LIMIT))
     self.META_LEARN_FLAG = False
     self.ALLOW_LOGGING = True
-    self.bb_log_frq = 4
+    self.bb_log_frq = 1
     self.gen_log_frq = 2
     self.learning_rate=0.0006 # originally 0.001
-    self.learning_rate_d = 0.00005
-    self.learning_rate_g= 0.0005
+    self.learning_rate_t = 0.008
+    self.learning_rate_g= 0.008
     self.beta1 = 0.5
     self.reg_hyp_param = 10.0
+    self.gamma = 1
+    self.mean_prob = 0.5
     self.solution_learning_rate = 0.000000005  # multiplied by the approx gradient
     self.init_variance = 0.05  
+    self.gan_init_variance = 0.06  
+    self.gan_regulaizer = 0.00001
     self.stochastic_perturbation = 0.7   # perturbation to find local min using random search 
     self.gradient_perturbation = 0.003  # perturbation of gradient approxmation
     self.OUT_SIZE = 128
     self.loss_mormalization = 0.5 *(2 * self.OUT_SIZE **2)**2 # to normalize the L2 pixel loss 
     self.batch_size = 16
-    self.generate_distribution_size = 500
+    self.generate_distribution_size = 1500
     self.generation_bound = 0.01
     # print("THe VALUE....  " , self.solution_learning_rate  / self.loss_mormalization )
     self.META_STEPS = 30
-    self.epochs = 20
+    self.epochs = 4
     self.STEPS_NUMBER = 1000
     self.gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.7)
     # self.X = np.random.random(size=(self.N,self.n)).astype(np.float32)
     # self.Y = np.random.random(size=(self.N,self.m)).astype(np.float32)
     self.fake_target = cv2.imread(os.path.join(self.frames_path,"target"+".jpg"))
     self.fake_target = forward_transform(cv2.cvtColor(self.fake_target,cv2.COLOR_BGR2RGB).astype(np.float32))
-    self.real_targets = read_images_to_np(path=os.path.join(self.frames_path,"real"),h=self.OUT_SIZE,w=self.OUT_SIZE,d_type=np.float32,mode="RGB")
-    self.real_targets = [forward_transform(x) for x in self.real_targets ]
-    self.target_no = -1
+    self.logger = open(os.path.join(self.train_log_dir,"message.txt"),"w") 
+    
 
 
-  def train(self):
-    if self.exp_type == "Random":
-      self.train_random()
-    elif self.exp_type == "Gradprox":
-      self.train_gradprox()
-    elif self.exp_type == "Lsearch":
-      self.train_lsearch()
-    elif self.exp_type == "RBFopt":
-      self.train_rbfopt()
-    print("finished training ....")
-    self.visualize_optimum()
-    print("the total time spent is %3.2f minutes " %((time.time()-self.start_time)/60.0))
-  # print("the range of values ", np.max(target),"---",np.min(target))
-  # raise Exception("STOOOOP")
-
-
-  # for ii in range(5):
-    # my_random_vector = [np.random.random(),np.random.random(),np.random.random(),
-    #  np.random.randint(7),np.random.randint(7),np.random.randint(-180,180)]
-    # X = np.random.uniform(-1,1,6).tolist()
-    # y = black_box(x,output_size=OUT_SIZE,global_step=ii,frames_path=frames_path)
-    # plt.figure()
-    # plt.imshow(y)
-    # plt.title("the box %d" %(ii))
-    # plt.show()
-
-
-  # images = read_images_to_np(path,n,n,extension="all",allowmax=True,maxnbr=1000,d_type=np.float32,mode="RGB")
-  # gray_images  = [cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) for image in images]
-
-  def train_random(self,random_type="uniform"):
-    with tf.Graph().as_default() as self.g:
-      with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                          activation_fn=tf.nn.relu,
-                          weights_initializer=tf.truncated_normal_initializer(0.0, self.init_variance),
-                          weights_regularizer=slim.l2_regularizer(0.00001)):
-        self.x = tf.placeholder(tf.float32, (self.n,))
-        self.labels = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-        self.y = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-        self.loss = tf.reduce_mean(tf.sqrt(tf.nn.l2_loss(self.y - self.labels)))
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
-        self.loss_summary= tf.summary.scalar('losses/main_loss', self.loss)
-
-
-
-    with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
-      self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
-      tf.global_variables_initializer().run()
-      self.all_inputs = []
-      self.all_losses = []
-      self.start_time = time.time()
-      scipy.misc.imsave(os.path.join(self.frames_path,"real_target.jpg"), inverse_transform(self.real_targets[self.target_no]))
-      if random_type is "lhs":
-        self.all_randoms = random_lhs(-1,1,self.n,self.STEPS_NUMBER)
-      for step in range(self.STEPS_NUMBER):
-        if random_type is "uniform":
-          self.X = np.random.uniform(-1,1,self.n)
-        elif random_type is "lhs":
-          self.X = np.copy(self.all_randoms[step])
-        self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
-        # self.current_fitness,self.new_summary = self.sess.run([self.loss,self.loss_summary],feed_dict={self.x:self.X,self.labels:self.fake_target,self.y:self.Y})
-        self.current_fitness,self.new_summary = self.sess.run([self.loss,self.loss_summary],feed_dict={self.x:self.X,self.labels:self.real_targets[self.target_no],self.y:self.Y})
-        self.writer.add_summary(self.new_summary,step)
-        print("step number : %2d Loss: %4.2f \n" %(step,self.current_fitness))
-        self.all_inputs.append(self.X)
-        self.all_losses.append(self.current_fitness)
-        if self.ALLOW_LOGGING and (step % self.bb_log_frq == 0):
-          scipy.misc.imsave(os.path.join(self.frames_log_dir,str(step)+".jpg"), inverse_transform(self.Y))
-      
-
-
-  def train_gradprox(self):
-    with tf.Graph().as_default() as self.g:
-      with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                          activation_fn=tf.nn.relu,
-                          weights_initializer=tf.truncated_normal_initializer(0.0, self.init_variance),
-                          weights_regularizer=slim.l2_regularizer(0.00001)):
-        self.x = tf.placeholder(tf.float64, (self.n,))
-        self.labels = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-        self.y = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-
-
-        # f_x = objective_function(x,n)
-        # g_bb = black_box(f_x,m)
-        # loss = slim.losses.sum_of_squares(g_bb, labels)
-        self.gradient_norm = tf.Variable(0,dtype=tf.float32, name='gradient_norm',trainable=False)
-        self.loss = tf.reduce_mean(tf.nn.l2_loss(self.y - self.labels))
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
-        self.loss_summary= tf.summary.scalar('losses/main_loss', self.loss)
-        self.grad_summary= tf.summary.scalar('gradients/main_gradient', self.gradient_norm)
-        # total_loss = slim.losses.get_total_loss()
-        # optimization_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='objective')
-        # optimization_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='blackbox')
-        # for i in optimization_variables:
-        #   print("\n\n the optimization variables ... ",i)
-        # train_tensor = slim.learning.create_train_op(loss, optimizer,variables_to_train=optimization_variables)
-        # train_tensor = slim.learning.create_train_op(loss, optimizer)
-
-    with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
-      self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
-      tf.global_variables_initializer().run()
-      self.all_inputs = []
-      self.all_losses = []
-      self.start_time = time.time()
-      self.X = np.random.uniform(-1,1,6).astype(np.float64)
-      for step in range(self.STEPS_NUMBER):
-        self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
-        self.current_fitness,self.new_loss_summary = self.sess.run([self.loss,self.loss_summary],feed_dict={self.x:self.X,self.labels:self.fake_target,self.y:self.Y})
-        self.approx_gradient = self.approximate_bb_gradient()
-        # self.approx_gradient = self.approximate_bb_forgradient()
-        self.gradient_norm.assign(norm(self.approx_gradient)).op.run()
-        self.new_gradient_summary = self.sess.run(self.grad_summary)
-        self.writer.add_summary(self.new_loss_summary,step)
-        self.writer.add_summary(self.new_gradient_summary,step)
-        print("\n\n\n\n\n\n\n\nstep number : %2d Loss: %4.2f  gradient_norm: %4.2f  \n" %(step,self.current_fitness,norm(self.approx_gradient)))
-        self.all_inputs.append(self.X)
-        self.all_losses.append(self.current_fitness)
-        if self.ALLOW_LOGGING and (step % self.bb_log_frq == 0):
-          scipy.misc.imsave(os.path.join(self.frames_log_dir,str(step)+".jpg"), inverse_transform(self.Y))
-        # print("\n\n\n\n\n The size of X",self.approx_gradient.shape)
-        self.X = self.X - self.solution_learning_rate * (self.approx_gradient) # / self.loss_normalization
-        self.X = np.clip(self.X,-1,1)
-        # print("the new  size of X",self.X.shape)
-        # raise Exception("...")
-  def train_rbfopt(self):
-    with tf.Graph().as_default() as self.g:
-      with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                          activation_fn=tf.nn.relu,
-                          weights_initializer=tf.truncated_normal_initializer(0.0, self.init_variance),
-                          weights_regularizer=slim.l2_regularizer(0.00001)):
-        self.x = tf.placeholder(tf.float32, (self.n,))
-        self.labels = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-        self.y = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-        self.loss = tf.reduce_mean(tf.sqrt(tf.nn.l2_loss(self.y - self.labels)))
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
-        self.loss_summary= tf.summary.scalar('losses/main_loss', self.loss)
-
-    def obj_funct(x):
-      self.X = x
-      self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
-      self.current_fitness,self.new_summary = self.sess.run([self.loss,self.loss_summary],feed_dict={self.x:self.X,self.labels:self.fake_target,self.y:self.Y})
-      self.writer.add_summary(self.new_summary,self.global_step)
-      print("step number : %2d Loss: %4.2f \n" %(self.global_step,self.current_fitness))
-      self.all_inputs.append(self.X)
-      self.all_losses.append(self.current_fitness)
-      if self.ALLOW_LOGGING and (self.global_step % self.bb_log_frq == 0):
-        scipy.misc.imsave(os.path.join(self.frames_log_dir,str(self.global_step)+".jpg"), inverse_transform(self.Y))
-      self.global_step += 1
-      return np.copy(self.current_fitness)
-
-
-
-    with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
-      self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
-      tf.global_variables_initializer().run()
-      self.all_inputs = []
-      self.all_losses = []
-      self.global_step=0
-      self.start_time = time.time()
-      bb = rbfopt.RbfoptUserBlackBox(self.n, -np.ones(self.n), np.ones(self.n),
-                                     np.array(['R']*self.n), obj_funct)
-      settings = rbfopt.RbfoptSettings(max_evaluations=self.STEPS_NUMBER,global_search_method="sampling",algorithm="Gutmann")
-      alg = rbfopt.RbfoptAlgorithm(settings, bb)
-      val, x, itercount, evalcount, fast_evalcount = alg.optimize()
-
-  def train_lsearch(self):
-    with tf.Graph().as_default() as self.g:
-      with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                          activation_fn=tf.nn.relu,
-                          weights_initializer=tf.truncated_normal_initializer(0.0, self.init_variance),
-                          weights_regularizer=slim.l2_regularizer(0.00001)):
-        self.x = tf.placeholder(tf.float64, (self.n,))
-        self.labels = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-        self.y = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-
-        self.descent_amount = tf.Variable(0,dtype=tf.float32, name='descent_amount',trainable=False)
-        self.loss = tf.reduce_mean(tf.sqrt(tf.nn.l2_loss(self.y - self.labels)))
-        self.extra_loss = tf.reduce_mean(tf.nn.relu(-tf.ones_like(self.x)-self.x)+ tf.nn.relu(self.x-tf.ones_like(self.x))) ## regulaizer to restrict the input in [-1,1]
-        self.total_loss = tf.to_float(self.loss) + self.reg_hyp_param * tf.to_float(self.extra_loss)
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
-        loss_summary= tf.summary.scalar('losses/main_loss', self.loss)
-        extra_loss_summary= tf.summary.scalar('losses/extra_loss', self.extra_loss)
-        total_loss_summary= tf.summary.scalar('losses/total_loss', self.total_loss)
-        descent_summary= tf.summary.scalar('descent/main_descent', self.descent_amount)
-        self.total_summary = tf.merge_summary([loss_summary,extra_loss_summary,total_loss_summary,descent_summary])
-    with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
-      self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
-      tf.global_variables_initializer().run()
-      self.all_inputs = []
-      self.all_losses = []
-      self.all_directions = []
-      self.start_time = time.time()
-      self.X = np.random.uniform(-1,1,6).astype(np.float64)
-      for step in range(self.STEPS_NUMBER):
-        self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
-        self.current_fitness,summary_string = self.sess.run([self.total_loss,self.total_summary],
-          feed_dict={self.x:self.X,self.labels:self.fake_target,self.y:self.Y})
-        chosen_point, descent_amount, chosen_direction  = self.local_random_search()
-        self.descent_amount.assign(descent_amount).op.run()
-        new_descent_summary = self.sess.run(self.descent_summary)
-        if descent_amount <= 0 :
-          descent_amount = 0 ; chosen_point = np.copy(self.X)
-        self.writer.add_summary(summary_string,step)
-        # self.writer.add_summary(new_extra_loss_summary,step)
-        # self.writer.add_summary(new_total_loss_summary,step)
-        # self.writer.add_summary(new_descent_summary,step)
-        print("\n\n\n\n\n\n\n\nstep number : %2d Loss: %4.2f  descent_amount: %4.2f  \n" %(step,self.current_fitness,descent_amount))
-        self.all_inputs.append(self.X)
-        self.all_losses.append(self.current_fitness)
-        self.all_directions.append(chosen_direction)
-        if self.ALLOW_LOGGING and (step % self.bb_log_frq == 0):
-          scipy.misc.imsave(os.path.join(self.frames_log_dir,str(step)+".jpg"), inverse_transform(self.Y))
-        # print("\n\n\n\n\n The size of X",self.approx_gradient.shape)
-        self.X = np.copy(chosen_point)
-        self.X = np.clip(self.X,-1,1)
-
-
-  def approximate_bb_forgradient(self):
-    approx_gradient = np.ones_like(self.X)
-    temp1 = np.copy(self.X)
-    for ii in range(len(self.X)):
-      temp1[ii] = (self.X[ii]+self.gradient_perturbation)
-      y1 = black_box(temp1,output_size=self.OUT_SIZE,global_step=1,frames_path=self.frames_path)
-      f1 = self.sess.run(self.loss,feed_dict={self.x:temp1,self.labels:self.fake_target,self.y:y1})
-      approx_gradient[ii] = (f1-self.current_fitness)/(self.gradient_perturbation)
-      temp1 = np.copy(self.X)
-    return approx_gradient 
-
-  def approximate_bb_gradient(self):
-    approx_gradient = np.ones_like(self.X)
-    temp1,temp2 = np.copy(self.X) ,np.copy(self.X) 
-    for ii in range(len(self.X)):
-      # print("\n\n the first ... ",self.X[ii], "   AND   ", self.gradient_perturbation, "   AND   ",(temp1[ii]),"   AND   ",(temp2[ii]) )
-      temp1[ii]  += self.gradient_perturbation
-      temp2[ii]  -= self.gradient_perturbation
-      # print("\n\n the difference between two ... " , norm(temp1-temp2) )
-      y1 = black_box(temp1,output_size=self.OUT_SIZE,global_step=1,frames_path=self.frames_path)
-      y2 = black_box(temp2,output_size=self.OUT_SIZE,global_step=1,frames_path=self.frames_path)
-      f1 = self.sess.run(self.loss,feed_dict={self.x:temp1,self.labels:self.fake_target,self.y:y1})
-      f2 = self.sess.run(self.loss,feed_dict={self.x:temp2,self.labels:self.fake_target,self.y:y2})
-      print("\n\nf1: %3.5f     f2:  %3.5f" %(f1,f2))
-      approx_gradient[ii] = (f1-f2)/(2*self.gradient_perturbation)
-      temp1,temp2 = np.copy(self.X) ,np.copy(self.X)
-    return approx_gradient 
-
-  def local_random_search(self,random_type="uniform"):
-    tried_fittness = []
-    tried_x = []
-    tried_directions = []
-    if random_type is "lhs":
-      random_grid = random_lhs(-self.stochastic_perturbation, self.stochastic_perturbation, len(self.X),number_samples=self.META_STEPS)
-    for meta in range(self.META_STEPS) :
-      # perturbing the variables with random directions
-      if random_type is "uniform":
-        some_random = np.random.uniform(-self.stochastic_perturbation, self.stochastic_perturbation, self.X.shape)
-      elif random_type is "normal":
-        some_random = np.random.normal(np.copy(self.X), self.stochastic_perturbation, self.X.shape)
-      elif random_type is "lhs":
-        some_random = random_grid[meta]
-      new_temp_x = np.copy(self.X) + some_random.astype(np.float64)
-      y1 = black_box(new_temp_x,output_size=self.OUT_SIZE,global_step=1,frames_path=self.frames_path)
-      new_temp_fittness = self.sess.run(self.total_loss,feed_dict={self.x:new_temp_x,self.labels:self.fake_target,self.y:y1})
-      tried_fittness.append(new_temp_fittness)
-      tried_x.append(new_temp_x)
-      tried_directions.append(- some_random)
-      # print("     the loss at trial %3d is:  %3.4f" %(meta,new_fittness))
-    choesen_x = tried_x[tried_fittness.index(min(tried_fittness))]
-    chosen_direction = tried_directions[tried_fittness.index(min(tried_fittness))]
-    fitness_decrease = np.copy(self.current_fitness) - min(tried_fittness)
-    return choesen_x , fitness_decrease ,chosen_direction
-
-
-  def visualize_optimum(self):
-    best_loss = min(self.all_losses)
-    best_input = self.all_inputs[self.all_losses.index(best_loss)]
-    print("the best loss is %4.2f at step: %d" %(best_loss,self.all_losses.index(best_loss)))
-    _ = black_box(best_input,output_size=self.OUT_SIZE,global_step="best",frames_path=self.frames_log_dir)
-    # slim.learning.train(train_tensor, train_log_dir,number_of_steps=STEPS_NUMBER,
-    #   save_summaries_secs=60,save_interval_secs=600)
 
 
   def generate_distribution(self,distribution_type="general"):
@@ -660,42 +337,228 @@ class BlackBoxOptimizer():
 
 
 
-  def learn_oracle(self,random_type="uniform"):
-    self.real_targets = suhffle_list(self.real_targets + flip_images(self.real_targets) + add_salt_pepper_noise(self.real_targets) + add_gaussian_noise(self.real_targets))
+  def learn_oracle(self,search=True,train=False,random_type="uniform",grid_space= 50, hp_iterations=10,epochs=8,real_no=0,augment=True):
+    self.epochs = epochs
+    self.real_targets = read_images_to_np(path=os.path.join(self.frames_path,"real_%d"%(real_no)),h=self.OUT_SIZE,w=self.OUT_SIZE,d_type=np.float32,mode="RGB")
+    self.real_targets = [forward_transform(x) for x in self.real_targets ]
+    self.target_no = -1
+    if augment:
+      self.real_targets = self.real_targets +  flip_images(self.real_targets) + add_salt_pepper_noise(self.real_targets) + add_gaussian_noise(self.real_targets)
     scipy.misc.imsave(os.path.join(self.frames_path,"real_target.jpg"), inverse_transform(self.real_targets[self.target_no]))
-    x_batches = [self.real_targets[ii:ii+self.batch_size] for ii in range(0, len(self.real_targets), self.batch_size)]
-    if len(self.real_targets) % self.batch_size != 0 :
-      x_batches.pop()
     with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
       saved_dict = cPickle.load(fp)
-    all_Xs , all_Ys = saved_dict["x"] , saved_dict["y"] 
-    train_x ,train_y , test_x , test_y = splitting_train_test(all_Xs,all_Ys,percentage=80,shuffle=True)
+    self.all_Xs , self.all_Ys = saved_dict["x"] , saved_dict["y"] 
+    self.valid_targets = read_images_to_np(path=self.generated_frames_valid_dir,h=self.OUT_SIZE,w=self.OUT_SIZE,d_type=np.float32,mode="RGB")
+    self.valid_targets = [forward_transform(x) for x in self.valid_targets ]
+    reg_grid = np.linspace(0.0000001,0.001,grid_space) ; var_grid = np.linspace(0.0000001,0.1,grid_space) ; lr_grid = np.linspace(0.0000001,0.00001,grid_space)
+    if search:
+      self.all_collections = []
+      self.all_losses = []
+      for ii in range(hp_iterations):
+        hp_collection  = np.random.choice(grid_space, 3)
+        hp_args = reg_grid[hp_collection[0]],var_grid[hp_collection[1]],lr_grid[hp_collection[2]]
+        validation_loss, self.all_prob = self.train_oracle(*hp_args,train=train)
+        self.all_collections.append(hp_collection)
+        self.all_losses.append(validation_loss)
+        print("\n\nhyperparameter iteration: %d has loss "%(ii),validation_loss,"the combo: ",hp_collection)
+      print("the minimum loss: ",min(self.all_losses))
+      print("the minimum combo: ",self.all_collections[self.all_losses.index(min(self.all_losses))])
+    else :
+      hp_collection = [28, 10,  5] #[ 4, 23, 4]
+      hp_args = reg_grid[hp_collection[0]],var_grid[hp_collection[1]],lr_grid[hp_collection[2]]
+      validation_loss, self.all_prob = self.train_oracle(*hp_args,train=train)
+      print(hp_args)
+      print("the loss: ",validation_loss)
+      self.visualize_oracle()
+
+  def train_oracle(self,reg=0.0001,weight_var=0.05,lr=.0001,train=False):
+    self.learning_rate_d = lr
+    self.init_variance = weight_var
+    self.regulaizer = reg
+    real_batches = [self.real_targets[ii:ii+self.batch_size] for ii in range(0, len(self.real_targets), self.batch_size)]
+    if len(self.real_targets) % self.batch_size != 0 :
+      real_batches.pop() 
     with tf.Graph().as_default() as self.g:
       with slim.arg_scope([slim.conv2d, slim.fully_connected],
                           activation_fn=tf.nn.relu,
                           weights_initializer=tf.truncated_normal_initializer(0.0, self.init_variance),
-                          weights_regularizer=slim.l2_regularizer(0.0001)):
-        # self.z = tf.placeholder(tf.float32, shape=[None,self.m])
-        self.x = tf.placeholder(tf.float32, (self.n,))
-        self.oracle_labels = tf.placeholder(tf.float32, shape=(self.OUT_SIZE,self.OUT_SIZE, 3))
-        self.y = tf.placeholder(tf.float32, (self.OUT_SIZE,self.OUT_SIZE, 3))
-        # self.d_real = dicrminator_ann(self.G_labels,1)
-        # self.d_fake = dicrminator_ann(self.x,1,reuse=True)
-        self.d_real = dicrminator_cnn(self.oracle_labels,self.OUT_SIZE,output_size=1,repeat_num=3,data_format=tf.float32,reuse=False)
-        self.d_fake = dicrminator_cnn(self.y,self.OUT_SIZE,output_size=1,repeat_num=3,data_format=tf.float32,reuse=True)
+                          weights_regularizer=slim.l2_regularizer(self.regulaizer)):
+
+        self.oracle_labels = tf.placeholder(tf.float32, shape=[self.batch_size,self.OUT_SIZE,self.OUT_SIZE, 3])
+        self.y = tf.placeholder(tf.float32, [self.batch_size,self.OUT_SIZE,self.OUT_SIZE, 3])
+        self.d_real, self.d_real_prob = dicrminator_cnn(self.oracle_labels,self.OUT_SIZE,output_size=1,repeat_num=3,reuse=False)
+        self.d_fake, self.d_fake_prob = dicrminator_cnn(self.y,self.OUT_SIZE,output_size=1,repeat_num=3,reuse=True)
         self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_real,labels= tf.ones_like(self.d_real)))
         self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake, labels=tf.zeros_like(self.d_fake)))
-        self.d_loss = self.d_loss_fake + self.d_loss_real
-        # self.g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake,labels= tf.ones_like(self.d_fake))) 
-        # self.g_loss_summary= tf.summary.scalar('losses/G_loss', self.g_loss)
+        regularization_loss = slim.losses.get_regularization_losses()[0]
+        self.d_loss = self.d_loss_fake + self.d_loss_real + regularization_loss
         self.d_loss_summary= tf.summary.scalar('losses/D_loss', self.d_loss)
-
-        # g_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='generator')
         d_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='oracle')
-        # slim.losses.add_loss(self.g_loss)
-        # self.total_loss = slim.losses.get_total_loss()
-        # self.g_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=self.beta1).minimize(self.g_loss,var_list=g_vars)
+        self.saver =  tf.train.Saver(var_list=d_vars)
         self.d_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_d, beta1=self.beta1).minimize(self.d_loss,var_list=d_vars)
+
+
+    with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
+      self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
+      tf.global_variables_initializer().run()
+      if train:
+        self.global_step = 0
+        self.start_time = time.time()
+        for epoch in range(self.epochs):
+          for step in range(len(real_batches)):
+            self.Y = sample_batch(self.all_Ys,self.batch_size)
+            _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.y:self.Y,self.oracle_labels:real_batches[step]})
+            self.writer.add_summary(new_summary,self.global_step)
+            self.global_step += 1
+          # self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=self.global_step, write_meta_graph=False)
+          run_loss, _ = self.validating_oracle()
+          self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=0, write_meta_graph=False)
+          random.shuffle(real_batches)
+          print("epoch: %d step number: %2d train d_Loss: %2.5f validation: %2.5f \n" %(epoch,self.global_step,self.current_d_loss,run_loss))
+      else : 
+        self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
+      avg_loss, all_prob = self.validating_oracle()
+      # print("\n\n\n validation loss : ", avg_loss)
+      return avg_loss, all_prob
+
+
+  # def testing_oracle(self):
+  #   self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-440"))
+  #   self.test_targets = read_images_to_np(path=self.generated_frames_test_dir,h=self.OUT_SIZE,w=self.OUT_SIZE,d_type=np.float32,mode="RGB")
+  #   self.test_targets = [forward_transform(x) for x in self.test_targets ]
+  #   all_prob = []
+  #   for indx , test_item in enumerate(self.test_targets):
+  #     test_prob, loss = self.sess.run([self.d_fake_prob,self.d_loss_fake],feed_dict={self.y:np.expand_dims(test_item, axis=0)})
+  #     print("item: %d test score: " %(indx),np.squeeze(loss))
+  #     all_prob.append(test_prob)
+  #   print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
+  #   return
+
+
+  def validating_oracle(self):
+    # self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-440"))
+    valid_batches = [self.valid_targets[ii:ii+self.batch_size] for ii in range(0, len(self.valid_targets), self.batch_size)]
+    if len(self.valid_targets) % self.batch_size != 0 :
+      valid_batches.pop() 
+    all_prob = []
+    all_losses = []
+    for  test_item in valid_batches:
+      test_prob, loss = self.sess.run([self.d_fake_prob,self.d_loss_fake],feed_dict={self.y:np.array(test_item)})
+      all_losses.append(loss)
+      all_prob = all_prob +  test_prob.flatten().tolist()
+    # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
+    avg_loss = np.mean(np.array(all_losses))
+    return avg_loss ,all_prob
+
+  def visualize_oracle(self,make_gif=True):
+    print(len(self.all_prob))
+    sorted_indices = flip(np.argsort(np.array(self.all_prob)),axis=0).tolist()
+    sorted_validation = [self.valid_targets[ii] for ii in sorted_indices]
+    for ii , img in enumerate(sorted_validation):
+      scipy.misc.imsave(os.path.join(self.generated_frames_test_dir,"s_%d.jpg"%(ii)),inverse_transform(img))
+    if make_gif:
+      imageio.mimsave(os.path.join(self.generated_frames_test_dir,"s.gif"),[inverse_transform(img) for img in sorted_validation[:20]])
+    plt.figure()
+    plt.hist(self.all_prob, bins=100, range=(0.0,1.0))
+    plt.savefig(os.path.join(self.generated_frames_test_dir,"histogram.jpg"))
+    return
+
+  def learn_bbgan(self,search=False,augment=True,train=False,cont_train=True,random_type="uniform",optimize_oracle=False,grid_space= 50, hp_iterations=10,epochs=8,restore_all=True,real_no=1,log_frq=4):
+    self.epochs = epochs
+    self.real_targets = read_images_to_np(path=os.path.join(self.frames_path,"real_%d"%(real_no)),h=self.OUT_SIZE,w=self.OUT_SIZE,d_type=np.float32,mode="RGB")
+    self.real_targets = [forward_transform(x) for x in self.real_targets ]
+    self.target_no = -1
+    if augment:
+      self.real_targets = self.real_targets +  flip_images(self.real_targets) + add_salt_pepper_noise(self.real_targets) + add_gaussian_noise(self.real_targets)
+    scipy.misc.imsave(os.path.join(self.frames_path,"real_target.jpg"),inverse_transform(self.real_targets[self.target_no]))
+    with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
+      saved_dict = cPickle.load(fp)
+    self.all_Xs , self.all_Ys = saved_dict["x"] , saved_dict["y"] 
+    # self.valid_targets = read_images_to_np(path=self.generated_frames_valid_dir,h=self.OUT_SIZE,w=self.OUT_SIZE,d_type=np.float32,mode="RGB")
+    # self.valid_targets = [forward_transform(x) for x in self.valid_targets ]
+    reg_grid = np.linspace(0.0000001,0.001,grid_space) ; var_grid = np.linspace(0.0000001,0.1,grid_space) ; lr_grid = np.linspace(0.0000001,0.00001,grid_space)
+    if search:
+      self.all_collections = []
+      self.all_losses = []
+      for ii in range(hp_iterations):
+        hp_collection  = np.random.choice(grid_space, 3)
+        hp_args = reg_grid[hp_collection[0]],var_grid[hp_collection[1]],lr_grid[hp_collection[2]]
+        validation_loss  = self.train_bbgan(*hp_args,train=train,optimize_oracle=optimize_oracle)
+        self.all_collections.append(hp_collection)
+        self.all_losses.append(validation_loss)
+        print("\n\nhyperparameter iteration: %d has loss "%(ii),validation_loss,"the combo: ",hp_collection)
+      print("the minimum loss: ",min(self.all_losses))
+      print("the minimum combo: ",self.all_collections[self.all_losses.index(min(self.all_losses))])
+    else :
+      hp_collection = [28, 10,  5] 
+      hp_args = reg_grid[hp_collection[0]],var_grid[hp_collection[1]],lr_grid[hp_collection[2]]
+      print("the hyper parameters : " ,hp_args)
+      validation_loss  = self.train_bbgan(*hp_args,train=train,cont_train=cont_train,optimize_oracle=optimize_oracle,restore_all=restore_all,log_frq=log_frq)
+      print("the hyper parameters : " ,hp_args)
+      print("the loss: ",validation_loss)
+
+  def train_bbgan(self,reg=0.0001,weight_var=0.05,lr=.0001,train=False,cont_train=True,optimize_oracle=True,restore_all=True,log_frq=4):
+    self.learning_rate_d = lr
+    self.init_variance = weight_var
+    self.regulaizer = reg
+    self.bb_log_frq = log_frq
+    real_batches = [self.real_targets[ii:ii+self.batch_size] for ii in range(0, len(self.real_targets), self.batch_size)]
+    if len(self.real_targets) % self.batch_size != 0 :
+      real_batches.pop() 
+    with tf.Graph().as_default() as self.g:
+      self.z = tf.placeholder(tf.float32, shape=[None,self.m])
+      self.x_ind = tf.placeholder(tf.float32, shape=[None,self.n])
+      self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
+      self.oracle_scores = tf.placeholder(tf.float32, shape=[None,1])
+      self.focal_weights =self.oracle_scores ** self.gamma
+      self.focal_weights_avg = tf.reduce_mean(self.focal_weights)
+      self.y = tf.placeholder(tf.float32, [None,self.OUT_SIZE,self.OUT_SIZE, 3])
+
+      with slim.arg_scope([slim.conv2d],
+                          activation_fn=tf.nn.relu,
+                          weights_initializer=tf.truncated_normal_initializer(0.0, self.init_variance),
+                          weights_regularizer=slim.l2_regularizer(self.regulaizer)):
+        self.d_real, self.d_real_prob = dicrminator_cnn(self.oracle_labels,self.OUT_SIZE,output_size=1,repeat_num=3,reuse=False)
+        self.d_fake, self.d_fake_prob = dicrminator_cnn(self.y,self.OUT_SIZE,output_size=1,repeat_num=3,reuse=True)
+        self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_real,labels= tf.ones_like(self.d_real)))
+        self.d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_fake, labels=tf.zeros_like(self.d_fake)))
+        d_regularization_loss = slim.losses.get_regularization_losses(scope="oracle")[0]
+        self.d_loss = self.d_loss_fake + self.d_loss_real + d_regularization_loss
+     
+      with slim.arg_scope([slim.fully_connected],
+                        activation_fn=tf.nn.relu,
+                        weights_initializer=tf.truncated_normal_initializer(0.0, self.gan_init_variance),
+                        weights_regularizer=slim.l2_regularizer(self.gan_regulaizer)):
+        self.x = generator_ann(self.z,self.n)
+        self.transmitter_good = dicrminator_ann(self.x_ind,1)
+        self.transmitter_bad = dicrminator_ann(self.x,1,reuse=True)
+        # self.t_fake = dicrminator_ann(self.x,1,reuse=True)
+        self.t_loss_good  = tf.reduce_mean(tf.losses.compute_weighted_loss(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.transmitter_good,
+          labels= tf.ones_like(self.transmitter_good)),weights=self.focal_weights)) 
+        self.t_loss_bad  = tf.reduce_mean(tf.losses.compute_weighted_loss(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.transmitter_bad,
+          labels= tf.zeros_like(self.transmitter_bad)),weights=(self.focal_weights_avg * tf.ones_like(self.focal_weights))))
+        self.g_loss = tf.reduce_mean(tf.losses.compute_weighted_loss(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.transmitter_bad,
+          labels= tf.ones_like(self.transmitter_bad)),weights=(self.focal_weights_avg * tf.ones_like(self.focal_weights))))
+        t_regularization_loss = slim.losses.get_regularization_losses(scope="discriminator")[0]
+        self.t_loss = self.t_loss_bad + self.t_loss_good # + t_regularization_loss
+
+      g_loss_summary= tf.summary.scalar('losses/G_loss', self.g_loss)
+      t_loss_real_summary= tf.summary.scalar('losses/t_loss_good', self.t_loss_good)
+      t_loss_bad_summary= tf.summary.scalar('losses/t_loss_bad', self.t_loss_bad)
+      t_loss_summary= tf.summary.scalar('losses/t_loss', self.t_loss)
+      d_loss_summary= tf.summary.scalar('losses/D_loss', self.d_loss)
+      self.total_summary = tf.summary.merge([g_loss_summary,t_loss_summary,t_loss_real_summary,t_loss_bad_summary,d_loss_summary]) # 
+      g_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='generator')
+      d_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='oracle')
+      t_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='discriminator')
+      all_vars = g_vars + d_vars + t_vars
+      self.saver =  tf.train.Saver(var_list=all_vars)
+      restorer = tf.train.Saver(var_list=d_vars)
+      # slim.losses.add_loss(self.g_loss)
+      # self.total_loss = slim.losses.get_total_loss()
+      self.g_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_g, beta1=self.beta1).minimize(self.g_loss,var_list=g_vars)
+      self.d_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_d, beta1=self.beta1).minimize(self.d_loss,var_list=d_vars)
+      self.t_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_t, beta1=self.beta1).minimize(self.t_loss,var_list=t_vars)
 
 
 
@@ -703,59 +566,107 @@ class BlackBoxOptimizer():
     with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
       self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
       tf.global_variables_initializer().run()
-      self.global_step = 0
-      self.start_time = time.time()
-      for epoch in range(self.epochs):
-        if random_type is "lhs":
-          self.all_randoms = random_lhs(-1,1,self.n,len(x_batches))
-        # if self.ALLOW_LOGGING and (epoch % self.gen_log_frq == 0) :
-        #   self.visualize_optimum_distribution(10,epoch)
-        for step in range(len(x_batches)):
-          # self.global_step = tf.train.get_global_step().eval(self.sess)
-          self.X = np.random.uniform(-1,1,[self.batch_size,self.m])
-          # print(x_batches[step])
-          # self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
-          _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.z:self.Z,self.G_labels:x_batches[step]})
-          self.writer.add_summary(new_summary,self.global_step)
-          _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
-          _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
-          self.writer.add_summary(new_summary,self.global_step)
-          print("epoch: %d step number: %2d g_Loss: %2.5f ,d_Loss: %2.5f \n" %(epoch,self.global_step,self.current_g_loss,self.current_d_loss))
-          self.global_step += 1
+      if cont_train:
+        if restore_all:
+          self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
+        else:
+          restorer.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
+      if train:
+        self.global_step = 0
+        self.start_time = time.time()
+        for epoch in range(self.epochs):
+          # if self.ALLOW_LOGGING and (epoch % self.gen_log_frq == 0) :
+          #   self.visualize_optimum_distribution(10,epoch)
+          for step in range(len(real_batches)):
+            # self.global_step = tf.train.get_global_step().eval(self.sess)
+            
+            ### evaluationg diffeent tensrs
+            self.Z = np.random.uniform(-1,1,[self.batch_size,self.m])
+            self.X = self.x.eval(feed_dict={self.z:self.Z},session=self.sess)
+            # self.Y = black_box_batch(self.X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
+            self.X_IND, indx = sample_batch(self.all_Xs,self.batch_size)
+            self.Y = [self.all_Ys[ii] for ii in indx ]
+            # print(x_batches[step])
+            # self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
+            if optimize_oracle:
+              _,current_oracle_scores,current_d_loss = self.sess.run([self.d_optimizer,self.d_fake_prob,self.d_loss_fake],
+                 feed_dict={self.y:self.Y,self.oracle_labels:real_batches[step]})
+            else :
+              current_oracle_scores,current_d_loss = self.sess.run([self.d_fake_prob,self.d_loss_fake],
+                 feed_dict={self.y:self.Y,self.oracle_labels:real_batches[step]})
+
+            _,current_t_loss = self.sess.run([self.t_optimizer,self.t_loss],
+               feed_dict={self.z:self.Z,self.y:self.Y,self.x_ind:self.X_IND,self.oracle_scores:current_oracle_scores,self.oracle_labels:real_batches[step]})
+
+            _,current_g_loss = self.sess.run([self.g_optimizer,self.g_loss],
+               feed_dict={self.z:self.Z,self.y:self.Y,self.oracle_scores:current_oracle_scores,self.oracle_labels:real_batches[step]})
+            _,current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.total_summary],
+               feed_dict={self.z:self.Z,self.y:self.Y,self.x_ind:self.X_IND,self.oracle_scores:current_oracle_scores,self.oracle_labels:real_batches[step]})
+            self.writer.add_summary(new_summary,self.global_step)
+            self.logger.write("epoch: %d step number: %2d ,train d_Loss: %2.5f train t_Loss: %2.5f train g_Loss: %2.5f \n" %(epoch,self.global_step,current_d_loss,current_t_loss,current_g_loss))
+
+            self.global_step += 1
+          # self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=self.global_step, write_meta_graph=False)
+          self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=0, write_meta_graph=False)
+          random.shuffle(real_batches)
+          if (epoch % self.bb_log_frq == 0):
+            avg_loss, self.all_prob = self.validating_bbgan()
+            self.visualize_bbgan(epoch=epoch)
+            self.logger.write("\n\nepoch: %d validation: %2.5f \n" %(epoch,avg_loss))
+      else : 
+        self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
+        avg_loss, self.all_prob = self.validating_bbgan()
+        self.visualize_bbgan()
+      # print("\n\n\n validation loss : ", avg_loss)
+      return avg_loss
 
 
+  def validating_bbgan(self,valid_size=32):
+    # self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-440"))
+    valid_Z = np.random.uniform(-1,1,[valid_size,self.m])
+    valid_X = self.x.eval(feed_dict={self.z:valid_Z},session=self.sess)
+    self.valid_targets = black_box_batch(valid_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path)
+    valid_batches = [self.valid_targets[ii:ii+self.batch_size] for ii in range(0, len(self.valid_targets), self.batch_size)]
+    if len(self.valid_targets) % self.batch_size != 0 :
+      valid_batches.pop() 
+    all_prob = []
+    all_losses = []
+    for  test_item in valid_batches:
+      test_prob, loss = self.sess.run([self.d_fake_prob,self.d_loss_fake],feed_dict={self.y:np.array(test_item)})
+      all_losses.append(loss)
+      all_prob = all_prob +  test_prob.flatten().tolist()
+    # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
+    avg_loss = np.mean(np.array(all_losses))
+    return avg_loss ,all_prob
 
-        # if META_LEARN_FLAG:
-        #   tried_directions = []
-        #   tried_fittness = []
-        #   current_objectives,current_fitness = sess.run([optimization_variables,loss],feed_dict={x:X,labels:Y})
-        #   # print("\n\n the current values .. ",current_objectives[0].shape)
-        #   for meta in range(META_STEPS) :
-        #     for idx , value in enumerate(current_objectives):
-        #       some_random = np.random.uniform(-stochastic_perturbation, stochastic_perturbation, value.shape)
-        #       new_objective = value + some_random
-        #       optimization_variables[idx].assign(new_objective).op.run()
-        #       tried_directions.append(- some_random)
-        #     new_fittness = sess.run(loss,feed_dict={x:X,labels:Y})
-        #     print("     the loss at trial %3d is:  %3.4f" %(meta,new_fittness))
-        #     # new_objective = 
-        #   tried_fittness.append()
+  def visualize_bbgan(self,make_gif=True,epoch=0):
+    # for ii , img in enumerate(sorted_validation):
+    #   scipy.misc.imsave(os.path.join(self.generated_frames_test_dir,"s_%d.jpg"%(ii)),inverse_transform(img))
+    if make_gif:
+      imageio.mimsave(os.path.join(self.generated_frames_test_dir,"s_%d.gif"%(epoch)),[inverse_transform(img) for img in self.valid_targets])
+    plt.figure()
+    plt.hist(self.all_prob, bins=100, range=(0.0,1.0))
+    plt.savefig(os.path.join(self.generated_frames_test_dir,"histogram_%d.jpg"%(epoch)))
+    return
+
+
 if __name__ == '__main__':
-  AVAILABLE_Exps = ["Gradprox","Random","VGD","Lsearch","RBFopt","Generator"]
-  exp_type = AVAILABLE_Exps[1]
-  exp_no = 15
+  AVAILABLE_Exps = ["Generator"]
+  exp_type = AVAILABLE_Exps[0]
+  exp_no = 36
   data_path = "D:\\mywork\\sublime\\GAN2\\data\\celebB"
   base_path = "D:\\mywork\\sublime\\vgd"
-  # logits = -1.1*np.ones(10)
-  # labels = tf.ones_like(logits)
-  # with tf.Session().as_default() as sess:
-  #   k = tf.nn.relu(-labels-logits)+ tf.nn.relu(logits-labels)
-  #   print("the loss.. : ", tf.reduce_mean(k).eval())
+  # for ii in range(10):
+  #   exp_no = 20 + ii
   bbexp = BlackBoxOptimizer(exp_type=exp_type,exp_no=exp_no,base_path=base_path)
-  bbexp.train()
-  bbexp.visualize_optimum()
   # bbexp.generate_distribution()
   # bbexp.learn_distribution_random()
   # bbexp.learn_distribution_gan()
+  # bbexp.learn_oracle(search=False,train=True,grid_space= 50, hp_iterations=10,epochs=6)
+  # bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=False ,optimize_oracle=True, hp_iterations=10,epochs=10,restore_all=True,log_frq=3,real_no=1)
+  bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=True ,optimize_oracle=False, hp_iterations=10,epochs=3,restore_all=True,log_frq=1,real_no=1)
+
+  # bbexp.logger.close()
+
 
 

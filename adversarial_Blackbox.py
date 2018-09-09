@@ -96,8 +96,8 @@ def generator_ann(x,output_size,min_bound=-1,max_bound=1):
 
 
 def black_box(input_vector,output_size=256,global_step=0,frames_path=None,params=None):
-  b = Blender('init.py','trils.blend')
-  b.basic_experiment(obj_name="Cube", vec=input_vector.tolist())
+  b = Blender('init.py','3d\MINI COOPER\Mini cooper.blend')
+  b.city_experiment(obj_name="Cube", vec=input_vector.tolist())
   b.save_image(output_size,output_size,path=frames_path,name=str(global_step))
   # b.save_file()
   b.execute()
@@ -125,14 +125,14 @@ class BlackBoxOptimizer():
   def __init__(self,exp_type="Random",exp_no=0,base_path=None):
     self.exp_type = exp_type
     self.exp_no = exp_no
-    self.dataset_nb = 1
+    self.dataset_nb = 2
     self.frames_path = os.path.join(base_path,"frames")
     self.generated_path = os.path.join(base_path,"generated")
     self.checkpoint_path = os.path.join(base_path,"checkpoint")
     self.frames_log_dir = os.path.join(self.frames_path,self.exp_type,self.exp_type+"_%d"%(self.exp_no))
     self.generated_frames_train_dir = os.path.join(self.generated_path,"train_%d"%(self.dataset_nb))
     self.generated_frames_valid_dir = os.path.join(self.generated_path,"valid_%d"%(self.dataset_nb))
-    self.generated_frames_test_dir = os.path.join(self.generated_path,self.exp_type,"G_%d_test_%d"%(self.dataset_nb,self.exp_no))
+    self.generated_frames_test_dir = os.path.join(self.generated_path,self.exp_type,"test%d_%d"%(self.dataset_nb,self.exp_no))
     self.train_log_dir = os.path.join(base_path,'logs',self.exp_type,self.exp_type+"_%d"%(self.exp_no))
     if not tf.gfile.Exists(self.train_log_dir):
       tf.gfile.MakeDirs(self.train_log_dir)
@@ -141,9 +141,9 @@ class BlackBoxOptimizer():
       tf.gfile.MakeDirs(self.train_log_dir)
     if not tf.gfile.Exists(self.frames_log_dir):
       tf.gfile.MakeDirs(self.frames_log_dir)
-    if self.exp_type is "Generator" and not tf.gfile.Exists(self.generated_frames_train_dir):
+    if self.exp_type is "Adversarial" and not tf.gfile.Exists(self.generated_frames_train_dir):
       tf.gfile.MakeDirs(self.generated_frames_train_dir)
-    if self.exp_type is "Generator" and not tf.gfile.Exists(self.generated_frames_test_dir):
+    if self.exp_type is "Adversarial" and not tf.gfile.Exists(self.generated_frames_test_dir):
       tf.gfile.MakeDirs(self.generated_frames_test_dir)
     self.n= 6    # the input to blck_box shape
     self.m = 5  # the generator input shape 
@@ -168,12 +168,12 @@ class BlackBoxOptimizer():
     self.init_variance = 0.05  
     self.stochastic_perturbation = 0.7   # perturbation to find local min using random search 
     self.gradient_perturbation = 0.003  # perturbation of gradient approxmation
-    self.OUT_SIZE = 128
+    self.OUT_SIZE = 227
     self.loss_mormalization = 0.5 *(2 * self.OUT_SIZE **2)**2 # to normalize the L2 pixel loss 
     self.batch_size = 32
     self.K = 10
     self.bb_ind_frq = 2
-    self.generate_distribution_size = 1500
+    self.generate_distribution_size = 10
     self.generation_bound = 0.01
     # print("THe VALUE....  " , self.solution_learning_rate  / self.loss_mormalization )
     self.META_STEPS = 30
@@ -697,36 +697,31 @@ class BlackBoxOptimizer():
 
 
 if __name__ == '__main__':
-  AVAILABLE_Exps = ["Generator"]
+  AVAILABLE_Exps = ["Adversarial"]
   exp_type = AVAILABLE_Exps[0]
   epochs_list = [2,4,6,8]
   real_list = [0,1,2]
   data_path = "D:\\mywork\\sublime\\GAN2\\data\\celebB"
   base_path = "D:\\mywork\\sublime\\vgd"
-  exp_no = 560
+  exp_no = 0
 
   # for epoch in epochs_list:
-  for real_no in real_list:
-    bbexp = BlackBoxOptimizer(exp_type=exp_type,exp_no=exp_no,base_path=base_path)
-    bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=False ,optimize_oracle=True, hp_iterations=10,epochs=7,
-      restore_all=True,log_frq=4,real_no=real_no,valid_size=2,evolve=False,keep_bank=False)
-    del bbexp
-    for ii in range(2):  
-  # for ii in range(10):
-  #   exp_no = 20 + ii
-      bbexp = BlackBoxOptimizer(exp_type=exp_type,exp_no=exp_no,base_path=base_path)
-      bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=True ,optimize_oracle=False, hp_iterations=10,epochs=20,
-        restore_all=False,log_frq=2,real_no=real_no,valid_size=35,focal=False,evolve=False,keep_bank=True)
-      exp_no = exp_no + 1 
-      del bbexp
+  # for real_no in real_list:
+  bbexp = BlackBoxOptimizer(exp_type=exp_type,exp_no=exp_no,base_path=base_path)
+  #   bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=False ,optimize_oracle=True, hp_iterations=10,epochs=7,
+  #     restore_all=True,log_frq=4,real_no=real_no,valid_size=2,evolve=False,keep_bank=False)
+  #   del bbexp
+  #   for ii in range(2):  
+  # # for ii in range(10):
+  # #   exp_no = 20 + ii
+  #     bbexp = BlackBoxOptimizer(exp_type=exp_type,exp_no=exp_no,base_path=base_path)
+  #     bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=True ,optimize_oracle=False, hp_iterations=10,epochs=20,
+  #       restore_all=False,log_frq=2,real_no=real_no,valid_size=35,focal=False,evolve=False,keep_bank=True)
+  #     exp_no = exp_no + 1 
+  #     del bbexp
 
 
-  # bbexp.generate_distribution()
+  bbexp.generate_distribution()
   # bbexp.learn_distribution_random()
   # bbexp.learn_distribution_gan()
 
-
-      # bbexp.learn_oracle(search=False,augment=True,train=True,grid_space= 50, hp_iterations=10,epochs=epoch,real_no=real_no)
-      # del bbexp
-  # bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=False ,optimize_oracle=True, hp_iterations=10,epochs=3,restore_all=True,log_frq=10,real_no=0,valid_size=20)
-  # bbexp.learn_bbgan(search=False,augment=True,train=True,grid_space= 50,cont_train=True ,optimize_oracle=False, hp_iterations=10,epochs=24,restore_all=False,log_frq=3,real_no=0,valid_size=20,focal=False)

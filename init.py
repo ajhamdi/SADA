@@ -55,6 +55,9 @@ def scale_object(obj_name="Cube",scale=(1,1,1)):
 def color_object(obj_name="Cube",colors=(0.05,0.05,0.8)):
 	bpy.data.objects[obj_name].active_material.diffuse_color = colors
 
+def color_material(mat_name="CAR PAINT",colors=(0.05,0.05,0.8,1)):
+	bpy.data.materials[mat_name].diffuse_ramp.elements[6].color = colors
+
 def rotate_object(obj_name="Cube",rotation=(0,0,0)):
 	bpy.data.objects[obj_name].rotation_euler = rotation
 
@@ -66,3 +69,10 @@ def basic_experiment(obj_name="Cube",vec=[-0.95,-0.95,0.8,0,0,0]):
 	change_position(obj_name,(7*vec[3],7*vec[4],0))
 	color_object(obj_name,((vec[0]+1)/2,(vec[1]+1)/2,(vec[2]+1)/2))
 
+def city_experiment(obj_name="Cube.006",vec=[-0.95,-0.95,0.8,0,0,0]):
+	bpy.context.scene.cursor_location = bpy.data.objects[obj_name].location
+	# rotate_object(obj_name,(0,0,180*vec[5]))
+	# scale_object(obj_name=obj_name,scale=(1.4,1.4,1.4))
+	change_position("Camera",(0,0,0))
+	change_position("Camera.002",(80*vec[0],80*vec[1],3+(1+vec[2])*10))
+	color_material("CAR PAINT",((vec[3]+1)/8,(vec[4]+1)/8,(vec[5]+1)/8,1))

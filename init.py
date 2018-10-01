@@ -56,6 +56,8 @@ def construct_lamp(lamp_type="SUN",pos=(21.03, -8.49, 17.39),rotation=(6.873, 0.
     lamp_object.location = pos
     lamp_object.rotation_euler =  rotation
 
+def energize_lamp(lamp_name="Lamp",energy=0):
+    bpy.data.lamps[lamp_name].energy= energy
 
 
 def scale_object(obj_name="Cube",scale=(1,1,1)):
@@ -83,11 +85,15 @@ def basic_experiment(obj_name="Cube",vec=[-0.95,-0.95,0.8,0,0,0]):
     change_position(obj_name,(7*vec[3],7*vec[4],0))
     color_object(obj_name,((vec[0]+1)/2,(vec[1]+1)/2,(vec[2]+1)/2))
 
+# function that takes 9D vector ( camera distance to object  , 2 Camera azimuth and elevation (-180,180),(0,50)   ,1 light azimth with respect to the camera(-180,180) , 1 light elevation (0,90),
+ # 1 light entisnsity , 3 RGB color of object )  and perform that .. all the input is between X_MIN,X_MAX
 def city_experiment(obj_name="myorigin",vec=[-0.95,-0.95,0.8,0,0,0]):
     bpy.context.scene.cursor_location = (0,0,0)
     # rotate_object(obj_name,(0,0,180*vec[5]))
     # scale_object(obj_name=obj_name,scale=(1.4,1.4,1.4))
-    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-29,-5.7),-0.35,0.1))
+    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-26,-5.7),-0.35,0.1))
     # change_position("Camera.002",(80*vec[0],80*vec[1],3+(1+vec[2])*10))
     rotate_object("myorigin",(0,translate(vec[2],X_MIN,X_MAX,0,0.9),translate(vec[1],X_MIN,X_MAX,-3.15,3.15)))
-    color_material("CAR PAINT",(translate(vec[3],X_MIN,X_MAX,0,0.25),translate(vec[4],X_MIN,X_MAX,0,0.25),translate(vec[5],X_MIN,X_MAX,0,0.25),1))
+    rotate_object("nextorigin",(0,translate(vec[4],X_MIN,X_MAX,0,1.57),translate(vec[3],X_MIN,X_MAX,-3.15,3.15)))
+    energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.1,3.0))
+    color_material("CAR PAINT",(translate(vec[6],X_MIN,X_MAX,0,0.3),translate(vec[7],X_MIN,X_MAX,0,0.3),translate(vec[8],X_MIN,X_MAX,0,0.3),1))

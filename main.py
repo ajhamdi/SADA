@@ -14,6 +14,7 @@ tf.app.flags.DEFINE_string('weights_file', 'yolov3.weights', 'Binary file with d
 
 tf.app.flags.DEFINE_integer('dataset_nb', 5, 'the dataset ID number used  ')
 tf.app.flags.DEFINE_integer('exp_no', 6, 'the exp number used ')
+tf.app.flags.DEFINE_integer('class_nb', 0, 'the exp number used ')
 tf.app.flags.DEFINE_integer('task_nb', 0, 'the exp number used ')
 tf.app.flags.DEFINE_integer('valid_size', 20, 'the size of the validation set for evaluation and visualization')
 tf.app.flags.DEFINE_integer('bb_log_frq', 40, 'the grequency of logging ')

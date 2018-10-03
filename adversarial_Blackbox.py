@@ -127,9 +127,9 @@ def convert_to_original_size(box, size, original_size):
     return list(box.reshape(-1))
 
 
-def black_box(input_vector,output_size=256,global_step=0,frames_path=None,cluster=False):
-    b = Blender(cluster,'init.py','3d/MINI COOPER/Mini cooper.blend')
-    b.city_experiment(obj_name="Cube", vec=input_vector.tolist())
+def black_box(input_vector,output_size=256,global_step=0,frames_path=None,cluster=False,parent_name='car'):
+    b = Blender(cluster,'init.py','3d/training_pascal/training.blend')
+    b.city_experiment(obj_name="myorigin", vec=input_vector.tolist(),parent_name=parent_name)
     b.save_image(output_size,output_size,path=frames_path,name=str(global_step))
     # b.save_file()
     b.execute()
@@ -137,11 +137,11 @@ def black_box(input_vector,output_size=256,global_step=0,frames_path=None,cluste
     image = forward_transform(cv2.cvtColor(image,cv2.COLOR_BGR2RGB).astype(np.float32))
     return image
 
-def black_box_batch(input_vectors,output_size=256,global_step=0,frames_path=None,cluster=False):
+def black_box_batch(input_vectors,output_size=256,global_step=0,frames_path=None,cluster=False,parent_name='car'):
     images =[]
     for input_vector in input_vectors:
         try:
-            images.append(black_box(np.array(input_vector),output_size,global_step,frames_path,cluster))
+            images.append(black_box(np.array(input_vector),output_size,global_step,frames_path,cluster,parent_name))
         except:
             continue
     return images
@@ -156,6 +156,7 @@ class BlackBoxOptimizer(object):
         self.dataset_nb = FLAGS.dataset_nb
         self.exp_type = FLAGS.exp_type
         self.exp_no = FLAGS.exp_no
+        self.class_nb = FLAGS.class_nb
 
         self.is_train = FLAGS.is_train
         self.is_gendist = FLAGS.is_gendist
@@ -190,7 +191,7 @@ class BlackBoxOptimizer(object):
             tf.gfile.MakeDirs(self.generated_frames_test_dir)
 
 
-        self.n= 6    # the input to blck_box shape
+        self.n= 8   # the input to blck_box shape
         self.m = 5  # the generator input shape 
         self.N = 100 # the number of data we have
         # self.DATA_LIMIT = 1000
@@ -223,6 +224,9 @@ class BlackBoxOptimizer(object):
         self.generation_bound = 0.01
         # print("THe VALUE....  " , self.solution_learning_rate  / self.loss_mormalization )
         self.classes = load_coco_names(os.path.join(self.detector_path,"coco.names"))
+        self.pascal_dict = {'aeroplane':4.271, 'bicycle':1.868, 'boat':4.184, 'bottle':1, 'bus':3.359, 'car':2.678,
+          'chair':1.082, 'diningtable':1.611, 'motorbike':2.27, 'sofa':2.101, 'train':4.42, 'tvmonitor':1.780}
+        self.pascal_list = list(self.pascal_dict.keys())
         self.conf_threshold=0.05
         self.iou_threshold=0.4
         self.weights_file= os.path.join(self.detector_path, FLAGS.weights_file)
@@ -247,7 +251,7 @@ class BlackBoxOptimizer(object):
             elif distribution_type is "general":
                 x = np.random.uniform(-1, 1, self.n)
             try :
-                y = black_box(x,output_size=self.OUT_SIZE,global_step=gen,frames_path=self.generated_frames_train_dir,cluster=self.is_cluster)
+                y = black_box(x,output_size=self.OUT_SIZE,global_step=gen,frames_path=self.generated_frames_train_dir,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
             except:
                 continue
             all_Xs.append(x)
@@ -309,7 +313,7 @@ class BlackBoxOptimizer(object):
                     # self.global_step = tf.train.get_global_step().eval(self.sess)
                     self.Z = np.random.uniform(-1,1,[self.batch_size,self.m])
                     # print(x_batches[step])
-                    # self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster)
+                    # self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
                     _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.z:self.Z,self.G_labels:x_batches[step]})
                     self.writer.add_summary(new_summary,self.global_step)
                     _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
@@ -327,7 +331,7 @@ class BlackBoxOptimizer(object):
         test_X = self.sess.run(self.x,feed_dict={self.z:test_Z})
         # print(test_X)
         # print("the best loss is %4.2f at step: %d" %(best_loss,self.all_losses.index(best_loss)))
-        imgs = black_box_batch(test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster)
+        imgs = black_box_batch(test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
         imageio.mimsave(os.path.join(self.generated_frames_test_dir,"s_%d.gif"%(step)),[inverse_transform(img) for img in imgs])
 
 
@@ -518,7 +522,7 @@ class BlackBoxOptimizer(object):
     def validating_bbgan(self,valid_size=32):
         test_Z = np.random.normal(np.zeros(self.m),1,[valid_size,self.m])
         self.test_X = self.x.eval(feed_dict={self.z:test_Z},session=self.sess)
-        self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster)
+        self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
         test_prob = self.detector_agent(np.array(self.test_targets))
 
         if not self.is_evolve:

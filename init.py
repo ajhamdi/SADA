@@ -20,6 +20,57 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
     valueScaled = float(value - leftMin) / float(leftSpan)
     return rightMin + (valueScaled * rightSpan)
 
+def connect_objects(parent_name="Empty",child_name="Cube"):
+    bpy.data.objects[child_name].parent = bpy.data.objects[parent_name]
+
+def import_batch_off(path_to_off_dir='/media/hamdiaj/D/mywork/sublime/vgd/3d/PASCAL3D+_release1.1/CAD/car/'):
+
+    # get list of all files in directory
+    file_list = sorted(os.listdir(path_to_off_dir))
+
+    # get a list of files ending in 'obj'
+    obj_list = [item for item in file_list if item.endswith('.off')]
+
+    # loop through the strings in obj_list and add the files to the scene
+    for item in obj_list:
+        path_to_file = os.path.join(path_to_off_dir, item)
+        bpy.ops.import_mesh.off(filepath=path_to_file)
+
+def import_batch_obj(path_to_obj_dir='/media/hamdiaj/D/mywork/sublime/vgd/3d/PASCAL3D+_release1.1/CAD/car/'):
+
+    # get list of all files in directory
+    file_list = sorted(os.listdir(path_to_obj_dir))
+
+    # get a list of files ending in 'obj'
+    obj_list = [item for item in file_list if item.endswith('.obj')]
+
+    # loop through the strings in obj_list and add the files to the scene
+    for item in obj_list:
+        path_to_file = os.path.join(path_to_obj_dir, item)
+        bpy.ops.import_scene.obj(filepath=path_to_file)
+
+def import_off_dataset_to_objects(path_to_dataset_dir=None,normilzation_dict=None,material_used=None):
+    dirs_list = sorted(os.listdir(path_to_dataset_dir))
+    dirs_list = [item for item in dirs_list if os.path.isdir(os.path.join(path_to_dataset_dir,item))]
+    print(dirs_list)
+    construct_empty(obj_name='dataset')    
+    for group in dirs_list:
+        construct_empty(obj_name=group)
+        connect_objects(parent_name='dataset',child_name=group)    
+        path_to_off_dir = os.path.join(path_to_dataset_dir,group)
+        file_list = sorted(os.listdir(path_to_off_dir))
+        obj_list = [item for item in file_list if item.endswith('.off')]
+    # loop through the strings in obj_list and add the files to the scene
+        for item in obj_list:
+            path_to_file = os.path.join(path_to_off_dir, item)
+            bpy.ops.import_mesh.off(filepath=path_to_file)
+            item_name = bpy.context.selected_objects[0].name
+            if material_used is not None:
+                bpy.context.selected_objects[0].data.materials.append(bpy.data.materials[material_used])
+            connect_objects(parent_name=group,child_name=item_name)
+        if normilzation_dict is not None:
+            scaleing = normilzation_dict[group]
+            scale_object(obj_name=group,scale=(scaleing,scaleing,scaleing))
 
 
 
@@ -31,11 +82,19 @@ def change_position(obj_name="Cube",new_pos=(0,0,0) ):
     bpy.data.objects[obj_name].location = new_pos
 
 
+def construct_empty(obj_name='Empty',pos=(0,0,0)):
+    bpy.context.scene.cursor_location = (0,0,0)
+    myobject  = bpy.data.objects.new(obj_name,None)
+    myobject.location = pos
+    myobject.empty_draw_type = 'PLAIN_AXES'
+    bpy.context.scene.objects.link(myobject)
+
+
 ## construct a cube in blender with vertices verts, and faces and place the object in position pos and color cols
-def construct_cube(verts,faces,pos=(0,0,0),colors=(0.05, 0.05, 0.8)):
+def construct_cube(obj_name="Cube",verts,faces,pos=(0,0,0),colors=(0.05, 0.05, 0.8)):
     bpy.context.scene.cursor_location = (0,0,0)
     mymesh = bpy.data.meshes.new("Cube")
-    myobject  = bpy.data.objects.new("Cube",mymesh)
+    myobject  = bpy.data.objects.new(obj_name,mymesh)
     myobject.location = pos
     bpy.context.scene.objects.link(myobject)
     #activeObject = bpy.context.active_object #Set active object to variable
@@ -59,11 +118,30 @@ def construct_lamp(lamp_type="SUN",pos=(21.03, -8.49, 17.39),rotation=(6.873, 0.
 def energize_lamp(lamp_name="Lamp",energy=0):
     bpy.data.lamps[lamp_name].energy= energy
 
+def hide_tree(parent_name="Empty",hide=True):
+    for obj in bpy.data.objects[parent_name].children:
+        obj.hide_render = hide
+        obj.hide = hide
+
+def deactivate_all_textures(material_name="Material"):
+    for ii in range(len(bpy.data.materials[material_name].use_textures)):
+        bpy.data.materials[material_name].use_textures[ii] = False
+
+def activate_texture(material_name="Material",texture_index=0):
+    bpy.data.materials[material_name].use_textures[texture_index] = True
+
 
 def scale_object(obj_name="Cube",scale=(1,1,1)):
     bpy.data.objects[obj_name].scale[0]  *= scale[0]
     bpy.data.objects[obj_name].scale[1]  *= scale[1]
     bpy.data.objects[obj_name].scale[2]  *= scale[2]
+
+def get_nb_children(parent_name="Empty"):
+    return len(bpy.data.objects[parent_name].children)
+
+def get_random_children(parent_name="Empty"):
+    random_index = np.random.randint(0,get_nb_children(parent_name=parent_name))
+    return bpy.data.objects[parent_name].children[random_index]
 
 def color_object(obj_name="Cube",colors=(0.05,0.05,0.8)):
     bpy.data.objects[obj_name].active_material.diffuse_color = colors
@@ -87,13 +165,24 @@ def basic_experiment(obj_name="Cube",vec=[-0.95,-0.95,0.8,0,0,0]):
 
 # function that takes 9D vector ( camera distance to object  , 2 Camera azimuth and elevation (-180,180),(0,50)   ,1 light azimth with respect to the camera(-180,180) , 1 light elevation (0,90),
  # 1 light entisnsity , 3 RGB color of object )  and perform that .. all the input is between X_MIN,X_MAX
-def city_experiment(obj_name="myorigin",vec=[-0.95,-0.95,0.8,0,0,0]):
+def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_name='car'):
+    normalization_dict={'aeroplane':4.271, 'bicycle':1.868, 'boat':4.184, 'bottle':1, 'bus':3.359, 'car':2.678,'chair':1.082,'diningtable':1.611, 'motorbike':2.27, 'sofa':2.101, 'train':4.42, 'tvmonitor':1.780}
+    texture_dict={'aeroplane':0, 'bicycle':0, 'boat':3, 'bottle':1, 'bus':0, 'car':0,'chair':1,'diningtable':1, 'motorbike':0, 'sofa':1, 'train':2, 'tvmonitor':1}
     bpy.context.scene.cursor_location = (0,0,0)
-    # rotate_object(obj_name,(0,0,180*vec[5]))
-    # scale_object(obj_name=obj_name,scale=(1.4,1.4,1.4))
-    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-26,-5.7),-0.35,0.1))
-    # change_position("Camera.002",(80*vec[0],80*vec[1],3+(1+vec[2])*10))
-    rotate_object("myorigin",(0,translate(vec[2],X_MIN,X_MAX,0,0.9),translate(vec[1],X_MIN,X_MAX,-3.15,3.15)))
-    rotate_object("nextorigin",(0,translate(vec[4],X_MIN,X_MAX,0,1.57),translate(vec[3],X_MIN,X_MAX,-3.15,3.15)))
-    energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.1,3.0))
-    color_material("CAR PAINT",(translate(vec[6],X_MIN,X_MAX,0,0.3),translate(vec[7],X_MIN,X_MAX,0,0.3),translate(vec[8],X_MIN,X_MAX,0,0.3),1))
+    for any_parent in normalization_dict.keys():
+        hide_tree(parent_name=any_parent,hide=True)
+    object_instance = get_random_children(parent_name)
+    object_instance.hide_render = False
+    object_instance.hide = False
+    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-16.5,-7.5),-0.35,0.1))
+    rotate_object(obj_name,(0,translate(vec[2],X_MIN,X_MAX,0,0.9),translate(vec[1],X_MIN,X_MAX,-3.15,3.15)))
+    rotate_object("nextorigin",(0,translate(vec[4],X_MIN,X_MAX,0.05,1.57),translate(vec[3],X_MIN,X_MAX,-3.15,3.15)))
+    # energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.3,2.5))
+    color_material("CAR PAINT",(translate(vec[5],X_MIN,X_MAX,0,1),translate(vec[6],X_MIN,X_MAX,0,1),translate(vec[7],X_MIN,X_MAX,0,1),1))
+    deactivate_all_textures('material_1.001')
+    activate_texture('material_1.001',texture_dict[parent_name])
+
+def prepare_dataset():
+    normalization_dict={'aeroplane':4.271, 'bicycle':1.868, 'boat':4.184, 'bottle':1, 'bus':3.359, 'car':2.678,'chair':1.082, 'diningtable':1.611, 'motorbike':2.27, 'sofa':2.101, 'train':4.42, 'tvmonitor':1.780}
+    path_to_dataset_dir = '/media/hamdiaj/D/mywork/sublime/vgd/3d/PASCAL3D+_release1.1/CAD/'
+    import_off_dataset_to_objects(path_to_dataset_dir=path_to_dataset_dir,normilzation_dict=normalization_dict,material_used='CAR PAINT')

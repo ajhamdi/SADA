@@ -163,18 +163,18 @@ def basic_experiment(obj_name="Cube",vec=[-0.95,-0.95,0.8,0,0,0]):
     change_position(obj_name,(7*vec[3],7*vec[4],0))
     color_object(obj_name,((vec[0]+1)/2,(vec[1]+1)/2,(vec[2]+1)/2))
 
-# function that takes 9D vector ( camera distance to object  , 2 Camera azimuth and elevation (-180,180),(0,50)   ,1 light azimth with respect to the camera(-180,180) , 1 light elevation (0,90),
- # 1 light entisnsity , 3 RGB color of object )  and perform that .. all the input is between X_MIN,X_MAX
+# function that takes 8D vector ( camera distance to object  , 2 Camera azimuth and elevation (-180,180),(0,50)   ,1 light azimth with respect to the camera(-180,180) , 1 light elevation (0,90),
+ # 1 3 RGB color of object )  and perform that .. all the input is between X_MIN,X_MAX
 def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_name='car'):
-    normalization_dict={'aeroplane':4.271, 'bicycle':1.868, 'boat':4.184, 'bottle':1, 'bus':3.359, 'car':2.678,'chair':1.082,'diningtable':1.611, 'motorbike':2.27, 'sofa':2.101, 'train':4.42, 'tvmonitor':1.780}
-    texture_dict={'aeroplane':0, 'bicycle':0, 'boat':3, 'bottle':1, 'bus':0, 'car':0,'chair':1,'diningtable':1, 'motorbike':0, 'sofa':1, 'train':2, 'tvmonitor':1}
+    normalization_dict={'aeroplane':4.6, 'bicycle':3, 'boat':4.8, 'bottle':2, 'bus':5, 'car':4,'chair':1.7, 'diningtable':2.7, 'motorbike':3, 'sofa':3, 'train':5, 'tvmonitor':2}
+    texture_dict={'aeroplane':0, 'bicycle':0, 'boat':3, 'bottle':0, 'bus':0, 'car':0,'chair':0,'diningtable':1, 'motorbike':0, 'sofa':0, 'train':0, 'tvmonitor':0}
     bpy.context.scene.cursor_location = (0,0,0)
     for any_parent in normalization_dict.keys():
         hide_tree(parent_name=any_parent,hide=True)
     object_instance = get_random_children(parent_name)
     object_instance.hide_render = False
     object_instance.hide = False
-    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-16.5,-7.5),-0.35,0.1))
+    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-15.5,-8),-0.35,0.1))
     rotate_object(obj_name,(0,translate(vec[2],X_MIN,X_MAX,0,0.9),translate(vec[1],X_MIN,X_MAX,-3.15,3.15)))
     rotate_object("nextorigin",(0,translate(vec[4],X_MIN,X_MAX,0.05,1.57),translate(vec[3],X_MIN,X_MAX,-3.15,3.15)))
     # energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.3,2.5))
@@ -183,6 +183,6 @@ def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_
     activate_texture('material_1.001',texture_dict[parent_name])
 
 def prepare_dataset():
-    normalization_dict={'aeroplane':4.271, 'bicycle':1.868, 'boat':4.184, 'bottle':1, 'bus':3.359, 'car':2.678,'chair':1.082, 'diningtable':1.611, 'motorbike':2.27, 'sofa':2.101, 'train':4.42, 'tvmonitor':1.780}
+    normalization_dict={'aeroplane':4.6, 'bicycle':3, 'boat':4.8, 'bottle':2, 'bus':5, 'car':4,'chair':1.7, 'diningtable':1.6, 'motorbike':3, 'sofa':3, 'train':5, 'tvmonitor':2}
     path_to_dataset_dir = '/media/hamdiaj/D/mywork/sublime/vgd/3d/PASCAL3D+_release1.1/CAD/'
     import_off_dataset_to_objects(path_to_dataset_dir=path_to_dataset_dir,normilzation_dict=normalization_dict,material_used='CAR PAINT')

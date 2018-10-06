@@ -264,27 +264,61 @@ def resize_image(image, height, width,channels=None,resize_mode=None):
         return image
 
 
-def read_images_to_np(path,h,w,extension="all",allowmax=False,maxnbr=0,d_type=np.float32,mode="BGR"):
+def read_images_to_np(path,h,w,extension="all",allowmax=False,maxnbr=0,d_type=np.float32,mode="BGR",normalize=False):
     images = []
     for root, dirnames, filenames in os.walk(path):
         exit_subdir = False
+        indices_missing = []
+        indx = 0
         max_nbr_pictures = maxnbr
         for filename in filenames:
             if not exit_subdir and (((extension is not "all") and filename.lower().endswith("."+extension) ) or extension is "all") :
                 filepath = os.path.join(root, filename)
                 image = cv2.imread(filepath)
             if image is None :
+                indices_missing.append(indx)
+                indx += 1
                 continue
             if mode is "RGB":
                 image = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
             image_resized = resize_image(image, h, w,resize_mode="crop") 
-            images.append(image_resized)
+            if normalize:
+                images.append(forward_transform(image_resized))
+            else:
+                images.append(image_resized)
             if allowmax:
                 max_nbr_pictures = max_nbr_pictures-1
                 if max_nbr_pictures is 0:
                     exit_subdir = True
+            indx += 1
+
     print("Finished reading the %d images ..."%(len(images)))
-    return images
+    return images , indices_missing
+
+
+def my_read_images(path,h,w,extension="jpg",d_type=np.float32,normalize=False):
+    images = []
+    indices_missing = []
+    file_list = sorted(os.listdir(path))
+    images_list = [item for item in file_list if item.endswith('.'+extension)]
+    for img in images_list:
+        indx = 0
+        img_name = os.path.join(path, img)
+        image = cv2.imread(img_name)
+        if image is None :
+            indices_missing.append(indx)
+            indx += 1
+            continue
+        image = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
+        # image_resized = resize_image(image, h, w,resize_mode="crop") 
+        if normalize:
+            images.append(forward_transform(image))
+        else:
+            images.append(image)
+        indx += 1
+    print("Finished reading the %d images ..."%(len(images)))
+    return images , indices_missing
+
 
 
 def flip_images(X_imgs):

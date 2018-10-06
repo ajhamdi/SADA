@@ -1,4 +1,3 @@
-
 import numpy as np
 import os
 import math
@@ -92,12 +91,24 @@ def generator_ann(x,output_size,min_bound=-1,max_bound=1):
         contrained_output = tf.nn.tanh(output)
     return contrained_output
 
-def load_coco_names(file_name):
+def load_dataset_names(file_name):
     names = {}
     with open(file_name) as f:
         for id, name in enumerate(f):
             names[id] = name
     return names
+
+def find_key(dict,value):
+    for key, values in dict.items():    # for name, age in dictionary.iteritems():  (for Python 2.x)
+        if value == values:
+            return key
+
+def match_two_dictionaries(dict1,dict2):
+    result_dict = {}
+    for key2, vlue2 in dict2.items():
+        if vlue2 in list(dict1.values()):
+            result_dict[find_key(dict1,vlue2)] = key2 
+    return result_dict
 
 def function_batches(function,input_list=range(1000),slice_size=100):
     full_output = []
@@ -146,6 +157,36 @@ def black_box_batch(input_vectors,output_size=256,global_step=0,frames_path=None
             continue
     return images
 
+def read_csv_list(file_name=None,col_indices=[0]):
+    import csv
+    full_list = []
+    with open(file_name) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+        for rows in csv_reader:
+            if line_count != 0:
+                full_list.append(np.array([float(col) for col in [rows[ii] for ii in range(len(rows)) if ii in col_indices] ]))
+                line_count += 1
+            else:
+                line_count += 1
+    return full_list               
+
+def write_csv_list(mylist,file_name=None,col_names=['first']):
+    import csv
+    with open(file_name, mode='w') as csv_file:
+        csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        csv_writer.writerow(col_names)
+        for rows in mylist:
+            csv_writer.writerow(list(rows))  
+    pass
+
+def normalize_vectors_list(vector_list,old_max,old_min,new_max,new_min):
+    old_range = old_max - old_min
+    new_range = new_max - new_min
+    range_ratio = new_range/ old_range
+    matrix = np.array(vector_list)
+    matrix = np.broadcast_to(new_min,matrix.shape) + (matrix - np.broadcast_to(old_min,matrix.shape))* np.broadcast_to(range_ratio,matrix.shape)
+    return list(matrix)
 
 
  
@@ -157,7 +198,7 @@ class BlackBoxOptimizer(object):
         self.exp_type = FLAGS.exp_type
         self.exp_no = FLAGS.exp_no
         self.class_nb = FLAGS.class_nb
-
+        self.evolution_nb = FLAGS.evolution_nb
         self.is_train = FLAGS.is_train
         self.is_gendist = FLAGS.is_gendist
         self.cont_train = FLAGS.cont_train
@@ -191,21 +232,18 @@ class BlackBoxOptimizer(object):
             tf.gfile.MakeDirs(self.generated_frames_test_dir)
 
 
-        self.n= 8   # the input to blck_box shape
-        self.m = 5  # the generator input shape 
-        self.N = 100 # the number of data we have
-        # self.DATA_LIMIT = 1000
-        # np.random.seed(0)
-        # self.random_no = np.abs(np.random.randint(self.DATA_LIMIT))
+        self.n= FLAGS.nb_paramters   # the input to blck_box shape
+        self.m = 5  # the generator z input shape 
+
         self.ALLOW_LOGGING = True
         self.make_gif = True
 
         self.valid_size = FLAGS.valid_size
-        self.bb_log_frq = FLAGS.bb_log_frq
+        self.log_frq = FLAGS.log_frq
         self.batch_size = FLAGS.batch_size
         self.K = FLAGS.K
         self.induced_size = FLAGS.induced_size
-        self.bb_ind_frq = FLAGS.bb_ind_frq
+        self.ind_frq = FLAGS.ind_frq
         self.nb_steps = FLAGS.nb_steps
         self.gendist_size= FLAGS.gendist_size
 
@@ -223,10 +261,10 @@ class BlackBoxOptimizer(object):
         self.OUT_SIZE = 340
         self.generation_bound = 0.01
         # print("THe VALUE....  " , self.solution_learning_rate  / self.loss_mormalization )
-        self.classes = load_coco_names(os.path.join(self.detector_path,"coco.names"))
-        self.pascal_dict = {'aeroplane':4.271, 'bicycle':1.868, 'boat':4.184, 'bottle':1, 'bus':3.359, 'car':2.678,
-          'chair':1.082, 'diningtable':1.611, 'motorbike':2.27, 'sofa':2.101, 'train':4.42, 'tvmonitor':1.780}
-        self.pascal_list = list(self.pascal_dict.keys())
+        self.coco_classes = load_dataset_names(os.path.join(self.detector_path,"coco.names"))
+        self.pascal_classes = load_dataset_names(os.path.join(self.detector_path,"pascal.names"))
+        self.PASCAL_TO_COCO = match_two_dictionaries(self.pascal_classes,self.coco_classes)
+        self.pascal_list = ['aeroplane', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'sofa', 'train', 'tvmonitor']
         self.conf_threshold=0.05
         self.iou_threshold=0.4
         self.weights_file= os.path.join(self.detector_path, FLAGS.weights_file)
@@ -234,7 +272,10 @@ class BlackBoxOptimizer(object):
         self.X_bank = [] ; self.Y_bank = []
         # self.X = np.random.random(size=(self.N,self.n)).astype(np.float32)
         # self.Y = np.random.random(size=(self.N,self.m)).astype(np.float32)
-        self.logger = open(os.path.join(self.train_log_dir,"message.txt"),"w") 
+        if self.is_train:
+            self.logger = open(os.path.join(self.train_log_dir,"message.txt"),"w") 
+        elif self.is_gendist:
+            self.logger = open(os.path.join(self.generated_frames_train_dir,"message.txt"),"w") 
         
 
 
@@ -242,7 +283,7 @@ class BlackBoxOptimizer(object):
 
     def generate_distribution(self,distribution_type="general"):
         all_Xs = []
-        all_Ys = []
+        # all_Ys = []
         vec= np.array([-0.95,-0.95,0.8,0,0,0])
         focus = np.array([self.generation_bound,self.generation_bound,self.generation_bound,0.9,0.9,0.9])
         for gen in range(self.gendist_size):
@@ -250,32 +291,33 @@ class BlackBoxOptimizer(object):
                 x = np.random.uniform(vec-focus, vec+focus, self.n)
             elif distribution_type is "general":
                 x = np.random.uniform(-1, 1, self.n)
+            elif distribution_type is "zeros":
+                x = np.zeros(self.n)
             try :
                 y = black_box(x,output_size=self.OUT_SIZE,global_step=gen,frames_path=self.generated_frames_train_dir,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
             except:
                 continue
             all_Xs.append(x)
-            all_Ys.append(y)
-        saved_dict = {"x":all_Xs,"y":all_Ys}
+            # all_Ys.append(y)
+        saved_dict = {"x":all_Xs}
         with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'wb') as fp:
             cPickle.dump(saved_dict,fp)
+        self.logger.write("The number of generated images : %d" %(len(all_Xs)) )
 
 
-
-    def learn_distribution_gan(self):
-        with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
-            saved_dict = cPickle.load(fp)
-        all_Xs , all_Ys = saved_dict["x"] , saved_dict["y"] 
-        train_x ,train_y , test_x , test_y = splitting_train_test(all_Xs,all_Ys,percentage=80,shuffle=True)
-        x_batches = [train_x[ii:ii+self.batch_size] for ii in range(0, len(train_x), self.batch_size)]
-        if len(train_x) % self.batch_size != 0 :
-            x_batches.pop()
-        # print(len(data_chunks[24]))
-        # raise Exception("WAIIIT ....")
+    def learn_selfdrive(self):
+        all_Xs = read_csv_list(file_name=os.path.join('./','selfdriving/input.csv'),col_indices=[0,1,2])
+        max_rows = np.max(np.array(all_Xs),axis=0)
+        min_rows = np.min(np.array(all_Xs),axis=0)
+        all_Xs = normalize_vectors_list(all_Xs,old_max=max_rows,old_min=min_rows,new_max=np.ones_like(max_rows),new_min=-np.ones_like(min_rows))
+        all_scores =  read_csv_list(file_name=os.path.join('./','selfdriving/output.csv'),col_indices=[3])
+        sorted_indices = np.argsort(np.array(all_scores).flatten(),axis=0).tolist()
+        chosen_x =  self.K*[all_Xs[ii] for ii in sorted_indices[:self.induced_size]]
+        chosen_scores =  self.K*[all_scores[ii] for ii in sorted_indices[:self.induced_size]]
         with tf.Graph().as_default() as self.g:
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
                                                     activation_fn=tf.nn.relu,
-                                                    weights_initializer=tf.truncated_normal_initializer(0.0, self.init_variance),
+                                                    weights_initializer=tf.truncated_normal_initializer(0.0, self.gan_init_variance),
                                                     weights_regularizer=slim.l2_regularizer(0.0001)):
                 self.z = tf.placeholder(tf.float32, shape=[None,self.m])
                 self.x = generator_ann(self.z,self.n)
@@ -293,10 +335,10 @@ class BlackBoxOptimizer(object):
 
                 g_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='generator')
                 d_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='discriminator')
-                # slim.losses.add_loss(self.g_loss)
-                # self.total_loss = slim.losses.get_total_loss()
-                self.g_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=self.beta1).minimize(self.g_loss,var_list=g_vars)
-                self.d_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=self.beta1).minimize(self.d_loss,var_list=d_vars)
+                all_vars = g_vars  + d_vars
+                self.saver =  tf.train.Saver(var_list=all_vars)
+                self.g_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_g, beta1=self.beta1).minimize(self.g_loss,var_list=g_vars)
+                self.d_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_t, beta1=self.beta1).minimize(self.d_loss,var_list=d_vars)
 
 
 
@@ -306,38 +348,31 @@ class BlackBoxOptimizer(object):
             tf.global_variables_initializer().run()
             self.global_step = 0
             self.start_time = time.time()
-            for epoch in range(self.epochs):
-                if self.ALLOW_LOGGING and ((epoch+1) % self.gen_log_frq == 0) :
-                    self.visualize_optimum_distribution(10,epoch)
-                for step in range(len(x_batches)):
-                    # self.global_step = tf.train.get_global_step().eval(self.sess)
-                    self.Z = np.random.uniform(-1,1,[self.batch_size,self.m])
-                    # print(x_batches[step])
-                    # self.Y = black_box(self.X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
-                    _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.z:self.Z,self.G_labels:x_batches[step]})
-                    self.writer.add_summary(new_summary,self.global_step)
-                    _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
-                    _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
-                    self.writer.add_summary(new_summary,self.global_step)
-                    print("epoch: %d step number: %2d g_Loss: %2.5f ,d_Loss: %2.5f \n" %(epoch,self.global_step,self.current_g_loss,self.current_d_loss))
-                    self.global_step += 1
+            for step in range(self.nb_steps):
+                x_batches, _ = sample_batch(chosen_x,self.batch_size)
+                self.Z = np.random.normal(np.zeros(self.m),1,[self.batch_size,self.m])
+                _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.z:self.Z,self.G_labels:np.array(x_batches)})
+                self.writer.add_summary(new_summary,self.global_step)
+                _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
+                _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
+                self.writer.add_summary(new_summary,self.global_step)
+                print("step number: %2d g_Loss: %2.5f ,d_Loss: %2.5f \n" %(self.global_step,self.current_g_loss,self.current_d_loss))
+                if ((step+1) % self.log_frq == 0):
+                    self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=0, write_meta_graph=False)
+                self.global_step += 1
 
 
-            self.visualize_optimum_distribution(20)
+            generated = self.generate_selfdrive(nb_paramters=self.valid_size)
+            generated = normalize_vectors_list(generated,new_max=max_rows,new_min=min_rows,old_max=np.ones_like(max_rows),old_min=-np.ones_like(min_rows))
+            write_csv_list(generated,file_name=os.path.join('./','selfdriving/generated.csv'),col_names=['z_pos','pitch','weather'])
 
-
-    def visualize_optimum_distribution(self,size_dist=20,step=0):
-        test_Z = np.random.uniform(-1,1,[size_dist,self.m])
+    def generate_selfdrive(self,nb_paramters=20):
+        test_Z = np.random.normal(np.zeros(self.m),1,[nb_paramters,self.m])
         test_X = self.sess.run(self.x,feed_dict={self.z:test_Z})
-        # print(test_X)
-        # print("the best loss is %4.2f at step: %d" %(best_loss,self.all_losses.index(best_loss)))
-        imgs = black_box_batch(test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
-        imageio.mimsave(os.path.join(self.generated_frames_test_dir,"s_%d.gif"%(step)),[inverse_transform(img) for img in imgs])
-
-
-
+        return test_X.tolist()
 
     def learn_bbgan(self,random_type="uniform"):
+        improvements = []
         # self.real_targets = read_images_to_np(path=os.path.join(self.frames_path,"real_%d"%(real_no)),h=self.OUT_SIZE,w=self.OUT_SIZE,d_type=np.float32,mode="RGB")
         # self.real_targets = [forward_transform(x) for x in self.real_targets ]
         # self.target_no = -1
@@ -346,17 +381,16 @@ class BlackBoxOptimizer(object):
         # scipy.misc.imsave(os.path.join(self.frames_path,"real_target.jpg"),inverse_transform(self.real_targets[self.target_no]))
         with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
             saved_dict = cPickle.load(fp)
-        self.all_Xs , self.all_Ys = saved_dict["x"] , saved_dict["y"] 
-        self.evolve_step = 0
+        self.all_Xs = saved_dict["x"] 
+        self.all_Ys, missing_indices  = my_read_images(self.generated_frames_train_dir,self.OUT_SIZE,self.OUT_SIZE,extension="jpg",d_type=np.float32,normalize=True)
+        if len(self.all_Ys) != len(self.all_Xs):
+            raise Exception("some images were not read properly ... the corrsponding Xs are not correct")
+
         self.retained_Ys = self.all_Ys.copy()      
-        improvement  = self.train_bbgan()
-        if self.is_evolve:
-            self.evolve_step += 1
-            improvement2  = self.train_bbgan()
-            self.evolve_step += 1
-            improvement3  = self.train_bbgan()
-        print("the score: ",improvement)
-        print("the evolved score: ",improvement2)
+        for self.evolve_step in range(self.evolution_nb):
+            improvements.append(self.train_bbgan())
+        for ii in range(self.evolution_nb):
+            print("the score of step %d is : "%(ii),improvements)
 
     def train_bbgan(self):
         with tf.Graph().as_default() as self.g:
@@ -370,7 +404,7 @@ class BlackBoxOptimizer(object):
 
             with tf.device('/GPU:0'):
                 with tf.variable_scope('detector'):
-                    detections = yolo_v3(self.y, len(self.classes), data_format='NHWC')
+                    detections = yolo_v3(self.y, len(self.coco_classes), data_format='NHWC')
                     load_ops = load_weights(tf.global_variables(scope='detector'), self.weights_file)
 
                 self.boxes = detections_boxes(detections)
@@ -434,7 +468,7 @@ class BlackBoxOptimizer(object):
                     self.Z = np.random.normal(np.zeros(self.m),1,[self.batch_size,self.m])
   
 
-                    if (step % self.bb_ind_frq == 0):
+                    if (step % self.ind_frq == 0):
                         self.inducer_bbgan(induced_size=self.induced_size)
  
                     ## evolutionary step
@@ -458,7 +492,7 @@ class BlackBoxOptimizer(object):
                     self.logger.write("step number: %2d , train t_Loss: %2.5f train g_Loss: %2.5f \n" %(self.global_step,current_t_loss,current_g_loss))
 
                     self.global_step += 1
-                    if ((step+1) % self.bb_log_frq == 0):
+                    if ((step+1) % self.log_frq == 0):
                         avg_loss, self.all_prob , stdloss,self.all_stdprob = self.validating_bbgan(valid_size=self.valid_size)
                         self.visualize_bbgan(step=step)
                         # self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=self.global_step, write_meta_graph=False)
@@ -489,13 +523,13 @@ class BlackBoxOptimizer(object):
             self.Y_bank = self.Y_bank + [Y[ii] for ii in sorted_indices[:induced_size]]
 
         elif self.full_set:
-            self.bb_ind_frq = 100000
+            self.ind_frq = 100000
             X_IND = self.all_Xs
             Y = self.all_Ys
             current_oracle_scores = function_batches(self.detector_agent,Y,50)
             current_oracle_scores = np.vstack(np.array(current_oracle_scores)).reshape(-1)
             # sorted_indices = flip(np.argsort(current_oracle_scores),axis=0).tolist()
-            sorted_indices = np.argsort(current_oracle_scores.flatten(),axis=0).tolist()
+            sorted_indices = np.argsort(current_oracle_scores,axis=0).tolist()
             self.X_bank = self.X_bank + self.K*[X_IND[ii] for ii in sorted_indices[:induced_size]]
             self.Y_bank = self.Y_bank + self.K*[Y[ii] for ii in sorted_indices[:induced_size]]
 
@@ -504,7 +538,8 @@ class BlackBoxOptimizer(object):
             self.Y = [self.all_Ys[ii] for ii in indx ]
     
 
-    def detector_agent(self, imgs, class_detected=CAR_CLASS):
+    def detector_agent(self, imgs, class_detected=None):
+        class_detected = self.PASCAL_TO_COCO[self.class_nb]
         imgs = [inverse_transform(img) for img in imgs]
         detected_boxes = self.sess.run(self.boxes, feed_dict={self.y: np.array(imgs, dtype=np.float32)})
         filtered_boxes = non_max_suppression(detected_boxes, confidence_threshold=self.conf_threshold,
@@ -513,7 +548,7 @@ class BlackBoxOptimizer(object):
         for image in filtered_boxes:
             score = 0 if class_detected not in image else np.max([score for box, score in image[class_detected]])
             result.append(score)
-        # print(self.classes[class_detected],result)
+        # print(self.coco_classes[class_detected],result)
         return np.expand_dims(np.array(result, dtype=np.float32),axis=-1)
     
     # def detection_batches(self, imgs, class_detected=CAR_CLASS):

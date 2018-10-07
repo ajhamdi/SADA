@@ -1,0 +1,5 @@
+*.pyc
+frames
+generated
+logs
+checkpoint

@@ -216,10 +216,10 @@ class BlackBoxOptimizer(object):
         if not FLAGS.is_selfdrive:
             from detectors.yolo_v3 import yolo_v3, load_weights, detections_boxes, non_max_suppression
             # print("THe VALUE....  " , self.solution_learning_rate  / self.loss_mormalization )
-            self.coco_classes = load_dataset_names(os.path.join(self.detector_path,"coco.names"))
-            self.pascal_classes = load_dataset_names(os.path.join(self.detector_path,"pascal.names"))
-            self.PASCAL_TO_COCO = match_two_dictionaries(self.pascal_classes,self.coco_classes)
-            self.pascal_list = ['aeroplane', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'sofa', 'train', 'tvmonitor']
+        self.coco_classes = load_dataset_names(os.path.join(self.detector_path,"coco.names"))
+        self.pascal_classes = load_dataset_names(os.path.join(self.detector_path,"pascal.names"))
+        self.PASCAL_TO_COCO = match_two_dictionaries(self.pascal_classes,self.coco_classes)
+        self.pascal_list = ['aeroplane','bench', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'train', 'truck']
 
         self.frames_log_dir = os.path.join(self.frames_path,self.exp_type,self.exp_type+"_%d"%(self.exp_no))
         self.generated_frames_train_dir = os.path.join(self.generated_path,"train_%d"%(self.dataset_nb))
@@ -267,14 +267,7 @@ class BlackBoxOptimizer(object):
         self.gamma = 1
         self.OUT_SIZE = 340
         self.generation_bound = 0.01
-<<<<<<< HEAD
-        # print("THe VALUE....  " , self.solution_learning_rate  / self.loss_mormalization )
-        self.coco_classes = load_dataset_names(os.path.join(self.detector_path,"coco.names"))
-        self.pascal_classes = load_dataset_names(os.path.join(self.detector_path,"pascal.names"))
-        self.PASCAL_TO_COCO = match_two_dictionaries(self.pascal_classes,self.coco_classes)
-        self.pascal_list = ['aeroplane','bench', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'train', 'truck']
-=======
->>>>>>> 28fee06809c59bfaffac144ede54af90f913da2e
+
         self.conf_threshold=0.05
         self.iou_threshold=0.4
         self.weights_file= os.path.join(self.detector_path, FLAGS.weights_file)

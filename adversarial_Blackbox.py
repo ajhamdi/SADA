@@ -264,7 +264,7 @@ class BlackBoxOptimizer(object):
         self.coco_classes = load_dataset_names(os.path.join(self.detector_path,"coco.names"))
         self.pascal_classes = load_dataset_names(os.path.join(self.detector_path,"pascal.names"))
         self.PASCAL_TO_COCO = match_two_dictionaries(self.pascal_classes,self.coco_classes)
-        self.pascal_list = ['aeroplane', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'sofa', 'train', 'tvmonitor']
+        self.pascal_list = ['aeroplane','bench', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'train', 'truck']
         self.conf_threshold=0.05
         self.iou_threshold=0.4
         self.weights_file= os.path.join(self.detector_path, FLAGS.weights_file)

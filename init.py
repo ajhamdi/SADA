@@ -23,40 +23,30 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
 def connect_objects(parent_name="Empty",child_name="Cube"):
     bpy.data.objects[child_name].parent = bpy.data.objects[parent_name]
 
-def import_batch_off(path_to_off_dir='/media/hamdiaj/D/mywork/sublime/vgd/3d/PASCAL3D+_release1.1/CAD/car/'):
-
-    # get list of all files in directory
+def import_batch_off(path_to_off_dir='/media/hamdiaj/D/mywork/sublime/vgd/3d/mydee/'):
     file_list = sorted(os.listdir(path_to_off_dir))
-
-    # get a list of files ending in 'obj'
     obj_list = [item for item in file_list if item.endswith('.off')]
-
-    # loop through the strings in obj_list and add the files to the scene
     for item in obj_list:
         path_to_file = os.path.join(path_to_off_dir, item)
         bpy.ops.import_mesh.off(filepath=path_to_file)
 
+
 def import_batch_obj(path_to_obj_dir='/media/hamdiaj/D/mywork/sublime/vgd/3d/PASCAL3D+_release1.1/CAD/car/'):
-
-    # get list of all files in directory
     file_list = sorted(os.listdir(path_to_obj_dir))
-
-    # get a list of files ending in 'obj'
     obj_list = [item for item in file_list if item.endswith('.obj')]
-
-    # loop through the strings in obj_list and add the files to the scene
     for item in obj_list:
         path_to_file = os.path.join(path_to_obj_dir, item)
         bpy.ops.import_scene.obj(filepath=path_to_file)
 
-def import_off_dataset_to_objects(path_to_dataset_dir=None,normilzation_dict=None,material_used=None):
+
+def import_off_dataset_to_objects(path_to_dataset_dir=None,ndataset_name=None,ormilzation_dict=None,material_used=None):
     dirs_list = sorted(os.listdir(path_to_dataset_dir))
     dirs_list = [item for item in dirs_list if os.path.isdir(os.path.join(path_to_dataset_dir,item))]
     print(dirs_list)
-    construct_empty(obj_name='dataset')    
+    construct_empty(obj_name=ndataset_name)    
     for group in dirs_list:
         construct_empty(obj_name=group)
-        connect_objects(parent_name='dataset',child_name=group)    
+        connect_objects(parent_name=ndataset_name,child_name=group)    
         path_to_off_dir = os.path.join(path_to_dataset_dir,group)
         file_list = sorted(os.listdir(path_to_off_dir))
         obj_list = [item for item in file_list if item.endswith('.off')]
@@ -68,9 +58,10 @@ def import_off_dataset_to_objects(path_to_dataset_dir=None,normilzation_dict=Non
             if material_used is not None:
                 bpy.context.selected_objects[0].data.materials.append(bpy.data.materials[material_used])
             connect_objects(parent_name=group,child_name=item_name)
-        if normilzation_dict is not None:
-            scaleing = normilzation_dict[group]
+        if ormilzation_dict is not None:
+            scaleing = ormilzation_dict[group]
             scale_object(obj_name=group,scale=(scaleing,scaleing,scaleing))
+
 
 
 
@@ -119,13 +110,24 @@ def energize_lamp(lamp_name="Lamp",energy=0):
     bpy.data.lamps[lamp_name].energy= energy
 
 def hide_tree(parent_name="Empty",hide=True):
-    for obj in bpy.data.objects[parent_name].children:
-        obj.hide_render = hide
-        obj.hide = hide
+    bpy.data.objects[parent_name].hide = hide
+    bpy.data.objects[parent_name].hide_render = hide
+    if bpy.data.objects[parent_name].children:
+        for obj in bpy.data.objects[parent_name].children:
+            obj.hide_render = hide
+            obj.hide = hide
+            if obj.children:
+                hide_tree(parent_name=obj.name,hide=hide)
+
+
+
+
+
 
 def deactivate_all_textures(material_name="Material"):
     for ii in range(len(bpy.data.materials[material_name].use_textures)):
         bpy.data.materials[material_name].use_textures[ii] = False
+
 
 def activate_texture(material_name="Material",texture_index=0):
     bpy.data.materials[material_name].use_textures[texture_index] = True
@@ -166,15 +168,13 @@ def basic_experiment(obj_name="Cube",vec=[-0.95,-0.95,0.8,0,0,0]):
 # function that takes 8D vector ( camera distance to object  , 2 Camera azimuth and elevation (-180,180),(0,50)   ,1 light azimth with respect to the camera(-180,180) , 1 light elevation (0,90),
  # 1 3 RGB color of object )  and perform that .. all the input is between X_MIN,X_MAX
 def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_name='car'):
-    normalization_dict={'aeroplane':4.6, 'bicycle':3, 'boat':4.8, 'bottle':2, 'bus':5, 'car':4,'chair':1.7, 'diningtable':2.7, 'motorbike':3, 'sofa':3, 'train':5, 'tvmonitor':2}
-    texture_dict={'aeroplane':0, 'bicycle':0, 'boat':3, 'bottle':0, 'bus':0, 'car':0,'chair':0,'diningtable':1, 'motorbike':0, 'sofa':0, 'train':0, 'tvmonitor':0}
+    texture_dict={'aeroplane':0,'bench':0 , 'bicycle':0, 'boat':3, 'bottle':1, 'bus':0, 'car':0,'chair':1,'diningtable':1, 'motorbike':0, 'sofa':1, 'train':0, 'tvmonitor':1, 'truck':0}
     bpy.context.scene.cursor_location = (0,0,0)
-    for any_parent in normalization_dict.keys():
+    for any_parent in texture_dict.keys():
         hide_tree(parent_name=any_parent,hide=True)
     object_instance = get_random_children(parent_name)
-    object_instance.hide_render = False
-    object_instance.hide = False
-    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-15.5,-8),-0.35,0.1))
+    hide_tree(parent_name=object_instance.name,hide=False)
+    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-14.5,-8),-0.35,0.1))
     rotate_object(obj_name,(0,translate(vec[2],X_MIN,X_MAX,0,0.9),translate(vec[1],X_MIN,X_MAX,-3.15,3.15)))
     rotate_object("nextorigin",(0,translate(vec[4],X_MIN,X_MAX,0.05,1.57),translate(vec[3],X_MIN,X_MAX,-3.15,3.15)))
     # energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.3,2.5))
@@ -183,6 +183,6 @@ def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_
     activate_texture('material_1.001',texture_dict[parent_name])
 
 def prepare_dataset():
-    normalization_dict={'aeroplane':4.6, 'bicycle':3, 'boat':4.8, 'bottle':2, 'bus':5, 'car':4,'chair':1.7, 'diningtable':1.6, 'motorbike':3, 'sofa':3, 'train':5, 'tvmonitor':2}
-    path_to_dataset_dir = '/media/hamdiaj/D/mywork/sublime/vgd/3d/PASCAL3D+_release1.1/CAD/'
-    import_off_dataset_to_objects(path_to_dataset_dir=path_to_dataset_dir,normilzation_dict=normalization_dict,material_used='CAR PAINT')
+    # normalization_dict={'aeroplane':4.6, 'bicycle':3, 'boat':4.8, 'bottle':2, 'bus':5, 'car':4,'chair':1.7, 'diningtable':2.7, 'motorbike':3, 'sofa':3, 'train':5, 'tvmonitor':2}
+    path_to_dataset_dir = '/media/hamdiaj/D/mywork/sublime/vgd/3d/mydee/'
+    import_off_dataset_to_objects(path_to_dataset_dir=path_to_dataset_dir,ndataset_name='mydataset',material_used='CAR PAINT')

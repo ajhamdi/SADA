@@ -3,11 +3,9 @@
 import numpy as np
 import tensorflow as tf
 from PIL import Image, ImageDraw
-
 from adversarial_Blackbox import *
 
 FLAGS = tf.app.flags.FLAGS
-
 
 tf.app.flags.DEFINE_string('exp_type', 'Adversarial', 'the experiment type')
 tf.app.flags.DEFINE_string('weights_file', 'yolov3.weights', 'Binary file with detector weights')
@@ -28,7 +26,6 @@ tf.app.flags.DEFINE_integer('ind_frq', 2, 'the frequency of the indcing ')
 tf.app.flags.DEFINE_integer('nb_steps', 600, 'the number of training steps ')
 tf.app.flags.DEFINE_integer('gendist_size', 10000, 'the size of the generated distribution ')
 
-
 tf.app.flags.DEFINE_boolean('is_train',True," training mode")
 tf.app.flags.DEFINE_boolean('is_selfdrive',False," trainign selfdriving agent")
 tf.app.flags.DEFINE_boolean('is_gendist',False," generate distribution mode")
@@ -41,17 +38,10 @@ tf.app.flags.DEFINE_boolean('is_evolve',False," use the output of BBGAN to impro
 tf.app.flags.DEFINE_boolean('keep_bank',False," use partial set iteratively to update the training bank")
 tf.app.flags.DEFINE_boolean('full_set',True," use the full set once in the training")
 
-
-
 tf.app.flags.DEFINE_float('learning_rate_t',0.0002, 'the adam learning rate of the D')
 tf.app.flags.DEFINE_float('learning_rate_g',0.0002, 'the adam learning rate of the G ')
 tf.app.flags.DEFINE_float('gan_init_variance',0.06 , 'gan inital variance for the D and G')
-
-
-        
-
-
-
+    
 
 def main(argv=None):
     # AVAILABLE_Exps = ["Adversarial"]
@@ -69,6 +59,7 @@ def main(argv=None):
     # for epoch in epochs_list:
     # for real_no in real_list:
     # for i in range(3):
+
     bbexp = BlackBoxOptimizer(FLAGS = FLAGS,base_path=base_path)
 
     if FLAGS.is_train:

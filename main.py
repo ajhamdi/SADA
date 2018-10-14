@@ -59,7 +59,8 @@ def main(argv=None):
     # for epoch in epochs_list:
     # for real_no in real_list:
     # for i in range(3):
-
+    print(FLAGS.flag_values_dict())
+    raise Exception 
     bbexp = BlackBoxOptimizer(FLAGS = FLAGS,base_path=base_path)
 
     if FLAGS.is_train:

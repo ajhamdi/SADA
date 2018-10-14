@@ -373,7 +373,7 @@ class BlackBoxOptimizer(object):
                 # if self.restore_all:
                 self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"))
                 X_IND = x = np.random.uniform(-1, 1, [self.K*self.induced_size,self.n])
-                discriminator_Scores = self.sess.run(,self.d_real,feed_dict={self.G_labels:X_IND}).reshape(-1)
+                discriminator_Scores = self.sess.run(self.d_real,feed_dict={self.G_labels:X_IND}).reshape(-1)
                 sorted_indices = flip(np.argsort(discriminator_Scores),axis=0).tolist()
                 # sorted_indices = np.argsort(current_oracle_scores,axis=0).tolist()
                 self.X_good =  [list(X_IND)[ii] for ii in sorted_indices[:self.induced_size]]
@@ -476,7 +476,7 @@ class BlackBoxOptimizer(object):
                 # if self.restore_all:
                 self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
                 X_IND = x = np.random.uniform(-1, 1, [self.K*self.induced_size,self.n])
-                discriminator_Scores = self.sess.run(,self.transmitter_good,feed_dict={self.x_ind:X_IND}).reshape(-1)
+                discriminator_Scores = self.sess.run(self.transmitter_good,feed_dict={self.x_ind:X_IND}).reshape(-1)
                 sorted_indices = flip(np.argsort(discriminator_Scores),axis=0).tolist()
                 # sorted_indices = np.argsort(discriminator_Scores,axis=0).tolist()
                 self.X_bank = self.X_bank + [list(X_IND)[ii] for ii in sorted_indices[:self.induced_size]]

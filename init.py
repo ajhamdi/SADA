@@ -69,6 +69,7 @@ def import_off_dataset_to_objects(path_to_dataset_dir=None,ndataset_name=None,or
 def save_file():
     bpy.ops.wm.save_mainfile()
 
+
 def change_position(obj_name="Cube",new_pos=(0,0,0) ):
     bpy.data.objects[obj_name].location = new_pos
 
@@ -122,8 +123,6 @@ def hide_tree(parent_name="Empty",hide=True):
 
 
 
-
-
 def deactivate_all_textures(material_name="Material"):
     for ii in range(len(bpy.data.materials[material_name].use_textures)):
         bpy.data.materials[material_name].use_textures[ii] = False
@@ -149,7 +148,7 @@ def color_object(obj_name="Cube",colors=(0.05,0.05,0.8)):
     bpy.data.objects[obj_name].active_material.diffuse_color = colors
 
 def color_material(mat_name="CAR PAINT",colors=(0.05,0.05,0.8,1)):
-    bpy.data.materials[mat_name].diffuse_ramp.elements[6].color = colors
+    bpy.data.materials[mat_name].diffuse_ramp.elements[1].color = colors
 
 def rotate_object(obj_name="Cube",rotation=(0,0,0)):
     bpy.data.objects[obj_name].rotation_euler = rotation

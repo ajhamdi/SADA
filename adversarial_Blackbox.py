@@ -18,6 +18,7 @@ from distutils.dir_util import copy_tree
 import shutil
 from scipy.sparse import lil_matrix
 import scipy 
+import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -25,6 +26,7 @@ plt.ioff()
 from scipy import signal
 import cv2
 # import rbfopt  # black_box_optimization library
+from detectors.yolo_v3 import yolo_v3, load_weights, detections_boxes, non_max_suppression
 from utils import *
 from models import *
 from scipy.linalg import circulant, norm
@@ -346,25 +348,40 @@ class BlackBoxOptimizer(object):
         with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
             self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
             tf.global_variables_initializer().run()
-            self.global_step = 0
-            self.start_time = time.time()
-            for step in range(self.nb_steps):
-                x_batches, _ = sample_batch(chosen_x,self.batch_size)
-                self.Z = np.random.normal(np.zeros(self.m),1,[self.batch_size,self.m])
-                _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.z:self.Z,self.G_labels:np.array(x_batches)})
-                self.writer.add_summary(new_summary,self.global_step)
-                _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
-                _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
-                self.writer.add_summary(new_summary,self.global_step)
-                print("step number: %2d g_Loss: %2.5f ,d_Loss: %2.5f \n" %(self.global_step,self.current_g_loss,self.current_d_loss))
-                if ((step+1) % self.log_frq == 0):
-                    self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=0, write_meta_graph=False)
-                self.global_step += 1
+            if self.is_train:
+                self.global_step = 0
+                self.start_time = time.time()
+                for step in range(self.nb_steps):
+                    x_batches, _ = sample_batch(chosen_x,self.batch_size)
+                    self.Z = np.random.normal(np.zeros(self.m),1,[self.batch_size,self.m])
+                    _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.z:self.Z,self.G_labels:np.array(x_batches)})
+                    self.writer.add_summary(new_summary,self.global_step)
+                    _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
+                    _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
+                    self.writer.add_summary(new_summary,self.global_step)
+                    print("step number: %2d g_Loss: %2.5f ,d_Loss: %2.5f \n" %(self.global_step,self.current_g_loss,self.current_d_loss))
+                    if ((step+1) % self.log_frq == 0):
+                        self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=0, write_meta_graph=False)
+                    self.global_step += 1
 
 
-            generated = self.generate_selfdrive(nb_paramters=self.valid_size)
-            generated = normalize_vectors_list(generated,new_max=max_rows,new_min=min_rows,old_max=np.ones_like(max_rows),old_min=-np.ones_like(min_rows))
-            write_csv_list(generated,file_name=os.path.join('./','selfdriving/generated.csv'),col_names=['z_pos','pitch','weather'])
+                generated = self.generate_selfdrive(nb_paramters=self.valid_size)
+                generated = normalize_vectors_list(generated,new_max=max_rows,new_min=min_rows,old_max=np.ones_like(max_rows),old_min=-np.ones_like(min_rows))
+                write_csv_list(generated,file_name=os.path.join('./','selfdriving/generated.csv'),col_names=['z_pos','pitch','weather'])
+
+            if self.cont_train:
+                # if self.restore_all:
+                self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"))
+                X_IND = x = np.random.uniform(-1, 1, [self.K*self.induced_size,self.n])
+                discriminator_Scores = self.sess.run(,self.d_real,feed_dict={self.G_labels:X_IND}).reshape(-1)
+                sorted_indices = flip(np.argsort(discriminator_Scores),axis=0).tolist()
+                # sorted_indices = np.argsort(current_oracle_scores,axis=0).tolist()
+                self.X_good =  [list(X_IND)[ii] for ii in sorted_indices[:self.induced_size]]
+                self.X_good = normalize_vectors_list(self.X_good,new_max=max_rows,new_min=min_rows,old_max=np.ones_like(max_rows),old_min=-np.ones_like(min_rows))
+                self.X_bad =  [list(X_IND)[ii] for ii in sorted_indices[-self.induced_size:]]
+                self.X_bad = normalize_vectors_list(self.X_bad,new_max=max_rows,new_min=min_rows,old_max=np.ones_like(max_rows),old_min=-np.ones_like(min_rows))
+                write_csv_list(self.X_good,file_name=os.path.join('./','selfdriving/good_discrminator.csv'),col_names=['z_pos','pitch','weather'])
+                write_csv_list(self.X_bad,file_name=os.path.join('./','selfdriving/bad_discrminator.csv'),col_names=['z_pos','pitch','weather'])
 
     def generate_selfdrive(self,nb_paramters=20):
         test_Z = np.random.normal(np.zeros(self.m),1,[nb_paramters,self.m])
@@ -458,6 +475,29 @@ class BlackBoxOptimizer(object):
             if self.cont_train:
                 # if self.restore_all:
                 self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
+                X_IND = x = np.random.uniform(-1, 1, [self.K*self.induced_size,self.n])
+                discriminator_Scores = self.sess.run(,self.transmitter_good,feed_dict={self.x_ind:X_IND}).reshape(-1)
+                sorted_indices = flip(np.argsort(discriminator_Scores),axis=0).tolist()
+                # sorted_indices = np.argsort(discriminator_Scores,axis=0).tolist()
+                self.X_bank = self.X_bank + [list(X_IND)[ii] for ii in sorted_indices[:self.induced_size]]
+                self.X_bad =  [list(X_IND)[ii] for ii in sorted_indices[-self.induced_size:]]
+                self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
+                test_prob = self.detector_agent(np.array(self.test_targets))
+
+                if not self.is_evolve:
+                    self.test_std,_ = sample_batch(self.all_Ys,valid_size)
+                else :
+                    self.test_std,_ = sample_batch(self.retained_Ys,valid_size)
+
+
+                test_stdprob = self.detector_agent(np.array(self.test_std))
+                # all_losses.append(loss)
+                all_prob =  test_prob.flatten().tolist()
+                all_stdprob = test_stdprob.flatten().tolist()
+                # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
+                avg_loss = np.mean(test_prob.flatten())
+                avg_stdloss = np.mean(test_stdprob.flatten())
+
                 # else:
                 #     restorer.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
             if self.is_train:
@@ -555,26 +595,29 @@ class BlackBoxOptimizer(object):
 
 
     def validating_bbgan(self,valid_size=32):
-        test_Z = np.random.normal(np.zeros(self.m),1,[valid_size,self.m])
-        self.test_X = self.x.eval(feed_dict={self.z:test_Z},session=self.sess)
-        self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
-        test_prob = self.detector_agent(np.array(self.test_targets))
+        if self.is_train:
+            test_Z = np.random.normal(np.zeros(self.m),1,[valid_size,self.m])
+            self.test_X = self.x.eval(feed_dict={self.z:test_Z},session=self.sess)
+            self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
+            test_prob = self.detector_agent(np.array(self.test_targets))
 
-        if not self.is_evolve:
-            self.test_std,_ = sample_batch(self.all_Ys,valid_size)
-        else :
-            self.test_std,_ = sample_batch(self.retained_Ys,valid_size)
+            if not self.is_evolve:
+                self.test_std,_ = sample_batch(self.all_Ys,valid_size)
+            else :
+                self.test_std,_ = sample_batch(self.retained_Ys,valid_size)
 
 
-        test_stdprob = self.detector_agent(np.array(self.test_std))
-        # all_losses.append(loss)
-        all_prob =  test_prob.flatten().tolist()
-        all_stdprob = test_stdprob.flatten().tolist()
-        # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
-        avg_loss = np.mean(test_prob.flatten())
-        avg_stdloss = np.mean(test_stdprob.flatten())
+            test_stdprob = self.detector_agent(np.array(self.test_std))
+            # all_losses.append(loss)
+            all_prob =  test_prob.flatten().tolist()
+            all_stdprob = test_stdprob.flatten().tolist()
+            # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
+            avg_loss = np.mean(test_prob.flatten())
+            avg_stdloss = np.mean(test_stdprob.flatten())
 
-        return avg_loss ,all_prob ,avg_stdloss, all_stdprob
+            return avg_loss ,all_prob ,avg_stdloss, all_stdprob
+        
+
 
     def visualize_bbgan(self,step=100):
         # for ii , img in enumerate(sorted_validation):

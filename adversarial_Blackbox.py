@@ -16,6 +16,7 @@ from itertools import chain
 from collections import deque
 from distutils.dir_util import copy_tree
 import shutil
+import pandas as pd
 from scipy.sparse import lil_matrix
 import scipy 
 import pandas as pd
@@ -23,6 +24,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 plt.ioff()
+import seaborn as sns
 from scipy import signal
 import cv2
 # import rbfopt  # black_box_optimization library
@@ -110,6 +112,13 @@ def match_two_dictionaries(dict1,dict2):
         if vlue2 in list(dict1.values()):
             result_dict[find_key(dict1,vlue2)] = key2 
     return result_dict
+def prepare_config_dict(mydict,ommit_list=[]):
+    for k in ommit_list:
+        mydict.pop(k, None)
+    for k ,v in mydict.items():
+        if isinstance(v, bool):
+            mydict[k] = int(v)
+    return mydict
 
 def function_batches(function,input_list=range(1000),slice_size=100):
     full_output = []
@@ -195,21 +204,9 @@ class BlackBoxOptimizer(object):
     CAR_CLASS = 2
 
     def __init__(self,FLAGS=None,base_path=None):
-        self.dataset_nb = FLAGS.dataset_nb
-        self.exp_type = FLAGS.exp_type
-        self.exp_no = FLAGS.exp_no
-        self.class_nb = FLAGS.class_nb
-        self.evolution_nb = FLAGS.evolution_nb
-        self.is_train = FLAGS.is_train
-        self.is_gendist = FLAGS.is_gendist
-        self.cont_train = FLAGS.cont_train
-        self.optimize_oracle = FLAGS.optimize_oracle
-        self.restore_all = FLAGS.restore_all
-        self.is_focal = FLAGS.is_focal
-        self.is_evolve = FLAGS.is_evolve
-        self.keep_bank = FLAGS.keep_bank
-        self.full_set = FLAGS.full_set
-        self.is_cluster = FLAGS.is_cluster
+        for k ,v in FLAGS.flag_values_dict().items():
+            setattr(self, k,v )
+        self.config_dict = FLAGS.flag_values_dict()
 
         self.frames_path = os.path.join(base_path,"frames")
         self.generated_path = os.path.join(base_path,"generated")
@@ -222,6 +219,8 @@ class BlackBoxOptimizer(object):
         self.pascal_classes = load_dataset_names(os.path.join(self.detector_path,"pascal.names"))
         self.PASCAL_TO_COCO = match_two_dictionaries(self.pascal_classes,self.coco_classes)
         self.pascal_list = ['aeroplane','bench', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'train', 'truck']
+        self.paramters_list = ["camera distance to object"  ,"Camera azimuth(-180,180)" ,"camera elevation (0,50)" ,"light azimth wrt camera(-180,180)" , "light elevation (0,90)",
+        "R-channel of texture","G-channel of texture","B-channel of texture"]
 
         self.frames_log_dir = os.path.join(self.frames_path,self.exp_type,self.exp_type+"_%d"%(self.exp_no))
         self.generated_frames_train_dir = os.path.join(self.generated_path,"train_%d"%(self.dataset_nb))
@@ -241,25 +240,9 @@ class BlackBoxOptimizer(object):
             tf.gfile.MakeDirs(self.generated_frames_test_dir)
 
 
-        self.n= FLAGS.nb_paramters   # the input to blck_box shape
-        self.m = 5  # the generator z input shape 
-
         self.ALLOW_LOGGING = True
-        self.make_gif = True
 
-        self.valid_size = FLAGS.valid_size
-        self.log_frq = FLAGS.log_frq
-        self.batch_size = FLAGS.batch_size
-        self.K = FLAGS.K
-        self.induced_size = FLAGS.induced_size
-        self.ind_frq = FLAGS.ind_frq
-        self.nb_steps = FLAGS.nb_steps
-        self.gendist_size= FLAGS.gendist_size
 
-        self.learning_rate_t = FLAGS.learning_rate_t
-        self.learning_rate_g=  FLAGS.learning_rate_g
-        self.gan_init_variance = FLAGS.gan_init_variance
-        # self.gen_log_frq = 2
         # self.learning_rate = 0.0006 # originally 0.001
 
         self.retained_size = FLAGS.retained_size # int(0.5*self.K*self.induced_size)
@@ -271,12 +254,13 @@ class BlackBoxOptimizer(object):
         self.generation_bound = 0.01
 
         self.conf_threshold=0.05
+        self.SUCCESS_THRESHOLD = 0.3
         self.iou_threshold=0.4
         self.weights_file= os.path.join(self.detector_path, FLAGS.weights_file)
         self.gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9,allow_growth = True)
         self.X_bank = [] ; self.Y_bank = []
-        # self.X = np.random.random(size=(self.N,self.n)).astype(np.float32)
-        # self.Y = np.random.random(size=(self.N,self.m)).astype(np.float32)
+        # self.X = np.random.random(size=(self.N,self.nb_parameters)).astype(np.float32)
+        # self.Y = np.random.random(size=(self.N,self.z_dim)).astype(np.float32)
         if self.is_train:
             self.logger = open(os.path.join(self.train_log_dir,"message.txt"),"w") 
         elif self.is_gendist:
@@ -290,11 +274,11 @@ class BlackBoxOptimizer(object):
         focus = np.array([self.generation_bound,self.generation_bound,self.generation_bound,0.9,0.9,0.9])
         for gen in range(self.gendist_size):
             if distribution_type is "specific":
-                x = np.random.uniform(vec-focus, vec+focus, self.n)
+                x = np.random.uniform(vec-focus, vec+focus, self.nb_parameters)
             elif distribution_type is "general":
-                x = np.random.uniform(-1, 1, self.n)
+                x = np.random.uniform(-1, 1, self.nb_parameters)
             elif distribution_type is "zeros":
-                x = np.zeros(self.n)
+                x = np.zeros(self.nb_parameters)
             try :
                 y = black_box(x,output_size=self.OUT_SIZE,global_step=gen,frames_path=self.generated_frames_train_dir,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
             except:
@@ -321,9 +305,9 @@ class BlackBoxOptimizer(object):
                                                     activation_fn=tf.nn.relu,
                                                     weights_initializer=tf.truncated_normal_initializer(0.0, self.gan_init_variance),
                                                     weights_regularizer=slim.l2_regularizer(0.0001)):
-                self.z = tf.placeholder(tf.float32, shape=[None,self.m])
-                self.x = generator_ann(self.z,self.n)
-                self.G_labels = tf.placeholder(tf.float32, shape=[None,self.n])
+                self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
+                self.x = generator_ann(self.z,self.nb_parameters)
+                self.G_labels = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
                 self.d_real = discrminator_ann(self.G_labels,1)
                 self.d_fake = discrminator_ann(self.x,1,reuse=True)
 
@@ -353,7 +337,7 @@ class BlackBoxOptimizer(object):
                 self.start_time = time.time()
                 for step in range(self.nb_steps):
                     x_batches, _ = sample_batch(chosen_x,self.batch_size)
-                    self.Z = np.random.normal(np.zeros(self.m),1,[self.batch_size,self.m])
+                    self.Z = np.random.normal(np.zeros(self.z_dim),1,[self.batch_size,self.z_dim])
                     _,self.current_d_loss,new_summary = self.sess.run([self.d_optimizer,self.d_loss,self.d_loss_summary],feed_dict={self.z:self.Z,self.G_labels:np.array(x_batches)})
                     self.writer.add_summary(new_summary,self.global_step)
                     _,self.current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.g_loss_summary],feed_dict={self.z:self.Z})
@@ -372,7 +356,7 @@ class BlackBoxOptimizer(object):
             if self.cont_train:
                 # if self.restore_all:
                 self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"))
-                X_IND = x = np.random.uniform(-1, 1, [self.K*self.induced_size,self.n])
+                X_IND = x = np.random.uniform(-1, 1, [self.K*self.induced_size,self.nb_parameters])
                 discriminator_Scores = self.sess.run(self.d_real,feed_dict={self.G_labels:X_IND}).reshape(-1)
                 sorted_indices = flip(np.argsort(discriminator_Scores),axis=0).tolist()
                 # sorted_indices = np.argsort(current_oracle_scores,axis=0).tolist()
@@ -384,7 +368,7 @@ class BlackBoxOptimizer(object):
                 write_csv_list(self.X_bad,file_name=os.path.join('./','selfdriving/bad_discrminator.csv'),col_names=['z_pos','pitch','weather'])
 
     def generate_selfdrive(self,nb_paramters=20):
-        test_Z = np.random.normal(np.zeros(self.m),1,[nb_paramters,self.m])
+        test_Z = np.random.normal(np.zeros(self.z_dim),1,[nb_paramters,self.z_dim])
         test_X = self.sess.run(self.x,feed_dict={self.z:test_Z})
         return test_X.tolist()
 
@@ -405,16 +389,17 @@ class BlackBoxOptimizer(object):
 
         self.retained_Ys = self.all_Ys.copy()      
         for self.evolve_step in range(self.evolution_nb):
-            improvements.append(self.train_bbgan())
-        for ii in range(self.evolution_nb):
-            print("the score of step %d is : "%(ii),improvements)
+            self.train_bbgan()
 
     def train_bbgan(self):
         with tf.Graph().as_default() as self.g:
-            self.z = tf.placeholder(tf.float32, shape=[None,self.m])
-            self.x_ind = tf.placeholder(tf.float32, shape=[None,self.n])
+            self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
+            self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
             self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
             self.oracle_scores = tf.placeholder(tf.float32, shape=[None,1])
+            self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
+            self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
+            self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
             self.focal_weights =self.oracle_scores ** self.gamma
             self.focal_weights_avg = tf.reduce_mean(self.focal_weights)
             self.y = tf.placeholder(tf.float32, [None,self.OUT_SIZE,self.OUT_SIZE, 3])
@@ -432,7 +417,7 @@ class BlackBoxOptimizer(object):
                                                     activation_fn=tf.nn.relu,
                                                     weights_initializer=tf.truncated_normal_initializer(0.0, self.gan_init_variance),
                                                     weights_regularizer=slim.l2_regularizer(self.gan_regulaizer)):
-                    self.x = generator_ann(self.z,self.n)
+                    self.x = generator_ann(self.z,self.nb_parameters)
                     self.transmitter_good = discrminator_ann(self.x_ind,1)
                     self.transmitter_bad = discrminator_ann(self.x,1,reuse=True)
      
@@ -454,7 +439,15 @@ class BlackBoxOptimizer(object):
             t_loss_real_summary= tf.summary.scalar('losses/t_loss_good', self.t_loss_good)
             t_loss_bad_summary= tf.summary.scalar('losses/t_loss_bad', self.t_loss_bad)
             t_loss_summary= tf.summary.scalar('losses/t_loss', self.t_loss)
-            self.total_summary = tf.summary.merge([g_loss_summary,t_loss_summary,t_loss_real_summary,t_loss_bad_summary]) # 
+            score_summary = tf.summary.scalar('metric/score_mean', self.score_mean)
+            std_summary = tf.summary.scalar('metric/std_mean', self.score_mean)
+            success_summary = tf.summary.scalar('metric/success_rate', self.success_rate)
+            var_summary = tf.summary.scalar('metric/input_variance', self.input_variance)
+            ommit_list = ['exp_type','weights_file','h','help','helpfull','helpshort']    
+            self.config_dict = prepare_config_dict(self.config_dict,ommit_list=ommit_list)
+            self.total_config_summary = tf.summary.merge([tf.summary.scalar('config/{}'.format(k),v) for k ,v in self.config_dict.items() ]) # 
+            self.total_loss_summary = tf.summary.merge([g_loss_summary,t_loss_summary,t_loss_real_summary,t_loss_bad_summary]) # 
+            self.total_metric_summary = tf.summary.merge([score_summary,var_summary,success_summary]) # 
             g_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='generator')
             t_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='discriminator')
             # d_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='detector')
@@ -475,28 +468,13 @@ class BlackBoxOptimizer(object):
             if self.cont_train:
                 # if self.restore_all:
                 self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
-                X_IND = x = np.random.uniform(-1, 1, [self.K*self.induced_size,self.n])
+                X_IND =  np.random.uniform(-1, 1, [self.K*self.induced_size,self.nb_parameters])
                 discriminator_Scores = self.sess.run(self.transmitter_good,feed_dict={self.x_ind:X_IND}).reshape(-1)
                 sorted_indices = flip(np.argsort(discriminator_Scores),axis=0).tolist()
                 # sorted_indices = np.argsort(discriminator_Scores,axis=0).tolist()
                 self.X_bank = self.X_bank + [list(X_IND)[ii] for ii in sorted_indices[:self.induced_size]]
                 self.X_bad =  [list(X_IND)[ii] for ii in sorted_indices[-self.induced_size:]]
-                self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
-                test_prob = self.detector_agent(np.array(self.test_targets))
 
-                if not self.is_evolve:
-                    self.test_std,_ = sample_batch(self.all_Ys,valid_size)
-                else :
-                    self.test_std,_ = sample_batch(self.retained_Ys,valid_size)
-
-
-                test_stdprob = self.detector_agent(np.array(self.test_std))
-                # all_losses.append(loss)
-                all_prob =  test_prob.flatten().tolist()
-                all_stdprob = test_stdprob.flatten().tolist()
-                # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
-                avg_loss = np.mean(test_prob.flatten())
-                avg_stdloss = np.mean(test_stdprob.flatten())
 
                 # else:
                 #     restorer.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
@@ -505,7 +483,7 @@ class BlackBoxOptimizer(object):
                 self.global_step = 0
                 for step in range(self.nb_steps):
                     print("step:",step)
-                    self.Z = np.random.normal(np.zeros(self.m),1,[self.batch_size,self.m])
+                    self.Z = np.random.normal(np.zeros(self.z_dim),1,[self.batch_size,self.z_dim])
   
 
                     if (step % self.ind_frq == 0):
@@ -525,7 +503,7 @@ class BlackBoxOptimizer(object):
 
                     _,current_g_loss = self.sess.run([self.g_optimizer,self.g_loss],
                          feed_dict={self.z:self.Z,self.y:self.Y,self.oracle_scores:np.array(current_oracle_scores)})
-                    _,current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.total_summary],
+                    _,current_g_loss,new_summary = self.sess.run([self.g_optimizer,self.g_loss,self.total_loss_summary],
                          feed_dict={self.z:self.Z,self.y:self.Y,self.x_ind:self.X_IND,self.oracle_scores:current_oracle_scores})
                     self.writer.add_summary(new_summary,self.global_step)
 
@@ -533,23 +511,34 @@ class BlackBoxOptimizer(object):
 
                     self.global_step += 1
                     if ((step+1) % self.log_frq == 0):
-                        avg_loss, self.all_prob , stdloss,self.all_stdprob = self.validating_bbgan(valid_size=self.valid_size)
-                        self.visualize_bbgan(step=step)
+                        self.validating_bbgan(valid_size=self.valid_size)
+                        if self.is_visualize:
+                            self.visualize_bbgan(step=step)
                         # self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=self.global_step, write_meta_graph=False)
                         self.saver.save(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model"), global_step=0, write_meta_graph=False)
 
-                        self.logger.write("\n\nepoch: %d validation: %2.5f   standard: %2.5f   improvmetn: %2.5f \n\n" %(step,avg_loss,stdloss,avg_loss-stdloss))
+                        self.logger.write("\n\nepoch: %d validation: %2.5f   standard: %2.5f   improvmetn: %2.5f \n\n" %(step,self.avg_loss,self.avg_stdloss,self.avg_loss-self.avg_stdloss))
             else : 
                 self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
-                avg_loss, self.all_prob , stdloss,self.all_stdprob = self.validating_bbgan(valid_size=self.valid_size)
-                self.visualize_bbgan()
+                self.validating_bbgan(valid_size=self.valid_size)
+                if self.is_visualize:
+                    self.visualize_bbgan()
             # print("\n\n\n validation loss : ", avg_loss)
             if self.is_evolve:
                 retained_X , inxs = sample_batch(self.all_Xs,self.retained_size) ; retained_Y =  [self.all_Ys[ii] for ii in inxs ]
                 self.all_Xs = self.X_bank + self.K * self.test_X.tolist() + retained_X
                 self.all_Ys = self.Y_bank + self.K * self.test_targets + retained_Y
 
-            return avg_loss-stdloss
+            if self.is_visualize:
+                self.visualize_bbgan(step=0)
+            self.writer.add_summary(self.total_metric_summary.eval(feed_dict={self.oracle_scores:self.test_prob,self.x_ind:self.test_X},session=self.sess),self.evolve_step)    
+            self.writer.flush()
+            self.writer.add_summary(self.total_config_summary.eval(feed_dict=None,session=self.sess),self.evolve_step)
+            self.writer.flush()
+            self.writer.add_summary(std_summary.eval(feed_dict={self.oracle_scores:self.test_stdprob},session=self.sess),self.evolve_step)
+            self.writer.flush()
+
+            return 
 
     def inducer_bbgan(self,induced_size=32):
         if self.keep_bank:
@@ -596,41 +585,63 @@ class BlackBoxOptimizer(object):
 
     def validating_bbgan(self,valid_size=32):
         if self.is_train:
-            test_Z = np.random.normal(np.zeros(self.m),1,[valid_size,self.m])
+            test_Z = np.random.normal(np.zeros(self.z_dim),1,[valid_size,self.z_dim])
             self.test_X = self.x.eval(feed_dict={self.z:test_Z},session=self.sess)
-            self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
-            test_prob = self.detector_agent(np.array(self.test_targets))
+        if self.cont_train:
+            self.test_bad = black_box_batch(self.X_bad.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
+            self.all_bad_prob =  self.detector_agent(np.array(self.test_bad)).flatten().tolist()
+            self.test_X = np.array(self.X_bank) 
 
-            if not self.is_evolve:
-                self.test_std,_ = sample_batch(self.all_Ys,valid_size)
-            else :
-                self.test_std,_ = sample_batch(self.retained_Ys,valid_size)
+        self.test_targets = black_box_batch(self.test_X.tolist(),output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb])
+        self.test_prob = self.detector_agent(np.array(self.test_targets))
+
+        if not self.is_evolve:
+            self.test_std,_ = sample_batch(self.all_Ys,valid_size)
+        else :
+            self.test_std,_ = sample_batch(self.retained_Ys,valid_size)
 
 
-            test_stdprob = self.detector_agent(np.array(self.test_std))
-            # all_losses.append(loss)
-            all_prob =  test_prob.flatten().tolist()
-            all_stdprob = test_stdprob.flatten().tolist()
-            # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
-            avg_loss = np.mean(test_prob.flatten())
-            avg_stdloss = np.mean(test_stdprob.flatten())
+        self.test_stdprob = self.detector_agent(np.array(self.test_std))
+        # all_losses.append(loss)
+        self.all_prob =  self.test_prob.flatten().tolist()
+        self.all_stdprob = self.test_stdprob.flatten().tolist()
+        # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
+        self.avg_loss = np.mean(self.test_prob.flatten())
+        self.avg_stdloss = np.mean(self.test_stdprob.flatten())
+        # print(self.test_X.shape)
+        # raise Exception
 
-            return avg_loss ,all_prob ,avg_stdloss, all_stdprob
+        return 
         
 
 
     def visualize_bbgan(self,step=100):
         # for ii , img in enumerate(sorted_validation):
         #   scipy.misc.imsave(os.path.join(self.generated_frames_test_dir,"s_%d.jpg"%(ii)),inverse_transform(img))
-        if self.make_gif:
-            imageio.mimsave(os.path.join(self.generated_frames_test_dir,"s_%d_%d.gif"%(step,self.evolve_step)),[inverse_transform(img) for img in self.test_targets])
+        imageio.mimsave(os.path.join(self.generated_frames_test_dir,"s_%d_%d.gif"%(step,self.evolve_step)),[inverse_transform(img) for img in self.test_targets])
+        save_image(np.array([inverse_transform(img) for img in sample_batch(self.test_targets,16)[0]]), os.path.join(self.generated_frames_test_dir,"s_%d_%d.png"%(step,self.evolve_step)),
+         nrow=4, padding=2,normalize=False, scale_each=False)
             # imageio.mimsave(os.path.join(self.generated_frames_test_dir,"r_%d.gif"%(epoch)),[inverse_transform(img) for img in self.test_std])
         # if self.is_cluster:
+        if self.is_train:
+            plt.figure(figsize = (8, 6))
+            plt.hist([self.all_prob,self.all_stdprob],color=["b","r"], label=["BBGAN","Random"], bins=100, range=(0.0,1.0))
+            plt.legend()
+            plt.savefig(os.path.join(self.generated_frames_test_dir,"histogram_%d_%d.jpg"%(step,self.evolve_step)))
 
-        plt.figure()
-        plt.hist([self.all_prob,self.all_stdprob],color=["b","r"], label=["BBGAN","Random"], bins=100, range=(0.0,1.0))
+        if self.cont_train:
+            plt.figure(figsize = (8, 6))
+            plt.hist([self.all_prob,self.all_stdprob,self.all_bad_prob],color=["b","r",'g'], label=["good_discrminator","Random","bad_discrminator"], bins=100, range=(0.0,1.0))
+            plt.legend()
+            plt.savefig(os.path.join(self.generated_frames_test_dir,"histogram_%d_%d.jpg"%(step,self.evolve_step)))
+
+        
+        plt.figure(figsize = (8, 6))
+        for ii in range(self.nb_parameters):
+            sns.kdeplot(np.array(self.test_X)[:,ii].tolist(), linewidth = 1, shade = False, label=self.paramters_list[ii])
         plt.legend()
-        plt.savefig(os.path.join(self.generated_frames_test_dir,"histogram_%d_%d.jpg"%(step,self.evolve_step)))
+        plt.savefig(os.path.join(self.generated_frames_test_dir,"parmeters_%d_%d.jpg"%(step,self.evolve_step)))
+
         return
 
 

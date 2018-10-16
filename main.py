@@ -12,7 +12,7 @@ tf.app.flags.DEFINE_string('weights_file', 'yolov3.weights', 'Binary file with d
 
 tf.app.flags.DEFINE_integer('dataset_nb', 5, 'the dataset ID number used  ')
 tf.app.flags.DEFINE_integer('exp_no', 0, 'the exp number used ')
-tf.app.flags.DEFINE_integer('nb_paramters', 8, 'the number of paramters learnt by BBGNA ')
+tf.app.flags.DEFINE_integer('nb_parameters', 8, 'the number of paramters learnt by BBGNA ')
 tf.app.flags.DEFINE_integer('class_nb', 0, 'the exp number used ')
 tf.app.flags.DEFINE_integer('task_nb', 0, 'the exp number used ')
 tf.app.flags.DEFINE_integer('evolution_nb', 1, 'the number of evolutionary steps ')
@@ -20,6 +20,7 @@ tf.app.flags.DEFINE_integer('valid_size', 20, 'the size of the validation set fo
 tf.app.flags.DEFINE_integer('log_frq', 40, 'the grequency of logging ')
 tf.app.flags.DEFINE_integer('batch_size', 64, 'the size of batch in training ')
 tf.app.flags.DEFINE_integer('K', 10, 'the degree of pickiness ')
+tf.app.flags.DEFINE_integer('z_dim', 8, 'the size of the z latent vector ')
 tf.app.flags.DEFINE_integer('induced_size', 50, 'the size of the indiced set to be added to training bank ')
 tf.app.flags.DEFINE_integer('retained_size', 5000,'the size of the partial retained set to be used in the evolved GAN if evolve is choice is used ')
 tf.app.flags.DEFINE_integer('ind_frq', 2, 'the frequency of the indcing ')
@@ -29,6 +30,7 @@ tf.app.flags.DEFINE_integer('gendist_size', 10000, 'the size of the generated di
 tf.app.flags.DEFINE_boolean('is_train',True," training mode")
 tf.app.flags.DEFINE_boolean('is_selfdrive',False," trainign selfdriving agent")
 tf.app.flags.DEFINE_boolean('is_gendist',False," generate distribution mode")
+tf.app.flags.DEFINE_boolean('is_visualize',True," visualize scores and images of that training batch")
 tf.app.flags.DEFINE_boolean('is_cluster',False," is it running in a cluster ?")
 tf.app.flags.DEFINE_boolean('cont_train',False," continue training trained model")
 tf.app.flags.DEFINE_boolean('optimize_oracle',False," optimimze the main AI agent")
@@ -59,8 +61,6 @@ def main(argv=None):
     # for epoch in epochs_list:
     # for real_no in real_list:
     # for i in range(3):
-    print(FLAGS.flag_values_dict())
-    raise Exception 
     bbexp = BlackBoxOptimizer(FLAGS = FLAGS,base_path=base_path)
 
     if FLAGS.is_train:

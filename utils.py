@@ -296,17 +296,21 @@ def read_images_to_np(path,h,w,extension="all",allowmax=False,maxnbr=0,d_type=np
     return images , indices_missing
 
 
-def my_read_images(path,h,w,extension="jpg",d_type=np.float32,normalize=False):
+def my_read_images(path,h,w,expected_number=0,extension="jpg",d_type=np.float32,normalize=False):
     images = []
     indices_missing = []
     file_list = sorted(os.listdir(path))
     images_list = [item for item in file_list if item.endswith('.'+extension)]
+    images_numbers = [int(os.path.splitext(img)[0]) for img in images_list]
+    if not expected_number:
+        expected_number = len(images_numbers)
+    expected_numbers = list(range(expected_number))
+    indx = 0
     for img in images_list:
-        indx = 0
         img_name = os.path.join(path, img)
         image = cv2.imread(img_name)
         if image is None :
-            indices_missing.append(indx)
+            indices_missing.append(images_numbers[indx])
             indx += 1
             continue
         image = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
@@ -316,8 +320,10 @@ def my_read_images(path,h,w,extension="jpg",d_type=np.float32,normalize=False):
         else:
             images.append(image)
         indx += 1
-    print("Finished reading the %d images ..."%(len(images)))
+    print("Finished reading the %d images ...missing: %d images "%(len(images),expected_number-len(images)))
+    indices_missing += [x for x in expected_numbers if x not in images_numbers]
     return images , indices_missing
+
 
 
 

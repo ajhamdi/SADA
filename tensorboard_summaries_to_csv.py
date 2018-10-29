@@ -12,23 +12,24 @@ import numpy as np
 
 def filter_top_n(df, tags, top_n):
     top_n_df = pd.DataFrame()
-    df_by_feature_types = df.groupby(by=['feature_type'])
-    for ft, this_ft_df in df_by_feature_types:
+    df_by_exp_types = df.groupby(by=['exp_type'])
+    for ft, this_ft_df in df_by_exp_types:
         this_ft_df.sort_values(by=tags, ascending=False, inplace=True)
         top_n_df = top_n_df.append(this_ft_df.reset_index(drop=True).iloc[:top_n])
     return top_n_df
 
-def main(root, phase, sub_folder, tags_filename, csv_filename, append_cvs_filename, top_n, cluster_name, verbose):
+def main(root, phase, tags_filename, csv_filename, append_cvs_filename, top_n, cluster_name, verbose):
     with open(tags_filename, 'r') as fobj:
         tags = json.load(fobj)
 
     rows = []
-    for experiment_foldername in tqdm(glob.glob('{}/*/{}/*'.format(root, phase))):
-        for events_filename in glob.glob('{}/{}/events*'.format(experiment_foldername,sub_folder)):
+    for experiment_foldername in tqdm(glob.glob('{}/*/{}/*/*'.format(root, phase))):
+        for events_filename in glob.glob('{}/*/events*'.format(experiment_foldername)):
             this_row = OrderedDict()
-            this_row['feature_type'] = experiment_foldername.split('/')[-3]
+            this_row['exp_type'] = experiment_foldername.split('/')[-4]
             this_row['cluster_name'] = cluster_name
-            this_row['phase'] = experiment_foldername.split('/')[-2]
+            this_row['phase'] = experiment_foldername.split('/')[-3]
+            this_row['scenario'] = experiment_foldername.split('/')[-2]
             this_row['experiment_folder'] = experiment_foldername
             for t in tags:
                 this_row[t] = None
@@ -62,21 +63,19 @@ if __name__ == '__main__':
 
     parser.add_argument('-r', '--root', required=True, type=str,
                       help='root directory containing the experiments')
-    parser.add_argument('-p', '--phase', default='train', type=str,
+    parser.add_argument('-p', '--phase', default='data_0', type=str,
                       help='s directory containing the tensorflow experiments')
-    parser.add_argument('-sub', '--sub_folder', default='/', type=str,
-                      help='sub folder containing the event file in each experiment folder (i.e. event file path is root/feature_type/phase/experiment_name/sub_folder/event_filename)')
-    parser.add_argument('-tags', '--tags_filename', required=True, type=str,
+    parser.add_argument('-tags', '--tags_filename', default='tags.json', type=str,
                       help='a json filename with a list of tags: [<summary_tag1>, <summary_tag2>, ..., <summary_tagN>]')
     parser.add_argument('-c', '--cluster_name', required=True, type=str,
                       help='the cluster name where the experiment folder lives')
     parser.add_argument('-o', '--csv_filename', required=True, type=str,
-                      help='output csv filename with columns: feature_type, phase, experiment_folder, cluster_name, <summary_tag1>, <summary_tag2>, ..., <summary_tagN>')
+                      help='output csv filename with columns: exp_type, phase, experiment_folder, cluster_name, <summary_tag1>, <summary_tag2>, ..., <summary_tagN>')
     parser.add_argument('-a', '--append_cvs_filename', type=str,
                       help='a csv filename from a previous run of this script to be be appended to the results of this run.')
     parser.add_argument('-n', '--top_n', default=1, type=int,
                       help='summarize the results and keep the top-n best experiments from each class for each feature type. Result is saved in <top_n>_<csv_filename>')
-    parser.add_argument('-v', '--verbose', default=False, action='store_true',
+    parser.add_argument('-v', '--verbose', default=True, action='store_true',
                       help='dump all model summaries not just the ones specified in tags')
     parser.add_argument('-log', '--loglevel', default='INFO',
                       help='logging level')

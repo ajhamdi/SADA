@@ -164,22 +164,59 @@ def basic_experiment(obj_name="Cube",vec=[-0.95,-0.95,0.8,0,0,0]):
     change_position(obj_name,(7*vec[3],7*vec[4],0))
     color_object(obj_name,((vec[0]+1)/2,(vec[1]+1)/2,(vec[2]+1)/2))
 
+
 # function that takes 8D vector ( camera distance to object  , 2 Camera azimuth and elevation (-180,180),(0,50)   ,1 light azimth with respect to the camera(-180,180) , 1 light elevation (0,90),
  # 1 3 RGB color of object )  and perform that .. all the input is between X_MIN,X_MAX
-def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_name='car'):
-    texture_dict={'aeroplane':0,'bench':0 , 'bicycle':0, 'boat':3, 'bottle':1, 'bus':0, 'car':0,'chair':1,'diningtable':1, 'motorbike':0, 'sofa':1, 'train':0, 'tvmonitor':1, 'truck':0}
+def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_name='car',scenario_nb=0):
+    texture_dict={'aeroplane':0,'bench':0 , 'bicycle':0, 'boat':3, 'bottle':1, 'bus':0, 'car':0,'chair':1,'diningtable':1, 'motorbike':0, 'sofa':1, 'train':0, 'tvmonitor':1, 'truck':0,'mycar':0,'mymotor':0,'mymotor2':0,'mystop':0}
     bpy.context.scene.cursor_location = (0,0,0)
-    for any_parent in texture_dict.keys():
-        hide_tree(parent_name=any_parent,hide=True)
-    object_instance = get_random_children(parent_name)
-    hide_tree(parent_name=object_instance.name,hide=False)
-    change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-14.5,-8),-0.35,0.1))
-    rotate_object(obj_name,(0,translate(vec[2],X_MIN,X_MAX,0,0.9),translate(vec[1],X_MIN,X_MAX,-3.15,3.15)))
-    rotate_object("nextorigin",(0,translate(vec[4],X_MIN,X_MAX,0.05,1.57),translate(vec[3],X_MIN,X_MAX,-3.15,3.15)))
-    # energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.3,2.5))
-    color_material("CAR PAINT",(translate(vec[5],X_MIN,X_MAX,0,1),translate(vec[6],X_MIN,X_MAX,0,1),translate(vec[7],X_MIN,X_MAX,0,1),1))
     deactivate_all_textures('material_1.001')
     activate_texture('material_1.001',texture_dict[parent_name])
+    for any_parent in texture_dict.keys():
+        hide_tree(parent_name=any_parent,hide=True)
+    if scenario_nb == 0:
+        object_instance = get_random_children(parent_name)
+        hide_tree(parent_name=object_instance.name,hide=False)
+        change_position("Camera",(translate(vec[0],X_MIN,X_MAX,-14.5,-8),-0.35,0.1))
+        rotate_object(obj_name,(0,translate(vec[2],X_MIN,X_MAX,0,0.9),translate(vec[1],X_MIN,X_MAX,-3.15,3.15)))
+        rotate_object("nextorigin",(0,translate(vec[4],X_MIN,X_MAX,0.05,1.57),translate(vec[3],X_MIN,X_MAX,-3.15,3.15)))
+        # energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.3,2.5))
+        color_material("CAR PAINT",(translate(vec[5],X_MIN,X_MAX,0,1),translate(vec[6],X_MIN,X_MAX,0,1),translate(vec[7],X_MIN,X_MAX,0,1),1))
+    elif scenario_nb in list(range(1,6)):
+        change_position("Camera",(-11.9,-0.35,0.1))
+        color_material("CAR PAINT",(0,0,1,1))
+        if scenario_nb in [1,2]:
+            object_instance = get_random_children(parent_name)
+            hide_tree(parent_name=object_instance.name,hide=False)
+        elif scenario_nb == 3:
+            hide_tree(parent_name='mycar',hide=False)
+        elif scenario_nb == 4:
+            hide_tree(parent_name='mymotor',hide=False)
+        elif scenario_nb == 5:
+            hide_tree(parent_name='mymotor2',hide=False)
+        rotate_object(obj_name,(0,translate(vec[1],X_MIN,X_MAX,0,0.9),translate(vec[0],X_MIN,X_MAX,-3.15,3.15)))
+        rotate_object("nextorigin",(0,translate(vec[1],X_MIN,X_MAX,0.05,1.57),translate(vec[0],X_MIN,X_MAX,-3.15,3.15)))
+    elif scenario_nb in list(range(6,11)):
+        change_position("Camera",(-11.9,-0.35,0.1))
+        color_material("CAR PAINT",(0,0,1,1))
+        rotate_object("nextorigin",(0,1.57,0))
+        hide_tree(parent_name='mystop',hide=False)
+        if scenario_nb in [6,7]:
+            object_instance = get_random_children(parent_name)
+            hide_tree(parent_name=object_instance.name,hide=False)
+        elif scenario_nb == 8:
+            hide_tree(parent_name='mycar',hide=False)
+        elif scenario_nb == 9:
+            hide_tree(parent_name='mymotor',hide=False)
+        elif scenario_nb == 10:
+            hide_tree(parent_name='mymotor2',hide=False)
+        rotate_object(obj_name,(0,translate(vec[1],X_MIN,X_MAX,0,0.9),translate(vec[0],X_MIN,X_MAX,-3.15,3.15)))
+        change_position("mystop",(-9.44385,translate(vec[2],X_MIN,X_MAX,1.58874,1.76874),1.21885))
+
+
+        # energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.3,2.5))
+
+
 
 def prepare_dataset():
     # normalization_dict={'aeroplane':4.6, 'bicycle':3, 'boat':4.8, 'bottle':2, 'bus':5, 'car':4,'chair':1.7, 'diningtable':2.7, 'motorbike':3, 'sofa':3, 'train':5, 'tvmonitor':2}

@@ -24,7 +24,7 @@ def main(root, phase, tags_filename, csv_filename, append_cvs_filename, top_n, c
 
     rows = []
     for experiment_foldername in tqdm(glob.glob('{}/*/{}/*/*'.format(root, phase))):
-        for events_filename in glob.glob('{}/*/events*'.format(experiment_foldername)):
+        for events_filename in tqdm(glob.glob('{}/*/events*'.format(experiment_foldername))):
             this_row = OrderedDict()
             this_row['exp_type'] = experiment_foldername.split('/')[-4]
             this_row['cluster_name'] = cluster_name
@@ -34,13 +34,16 @@ def main(root, phase, tags_filename, csv_filename, append_cvs_filename, top_n, c
             for t in tags:
                 this_row[t] = None
 
-            for e in tf.train.summary_iterator(events_filename):
-                for v in e.summary.value:
-                    if verbose:
-                        this_row[v.tag] = v.simple_value
-                    else:
-                        if v.tag in tags:
+            try:
+                for e in tf.train.summary_iterator(events_filename):
+                    for v in e.summary.value:
+                        if verbose:
                             this_row[v.tag] = v.simple_value
+                        else:
+                            if v.tag in tags:
+                                this_row[v.tag] = v.simple_value
+            except:
+                continue
             logging.debug(this_row)
             rows += [this_row]
 
@@ -63,7 +66,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-r', '--root', required=True, type=str,
                       help='root directory containing the experiments')
-    parser.add_argument('-p', '--phase', default='data_0', type=str,
+    parser.add_argument('-p', '--phase', default='data_2', type=str,
                       help='s directory containing the tensorflow experiments')
     parser.add_argument('-tags', '--tags_filename', default='tags.json', type=str,
                       help='a json filename with a list of tags: [<summary_tag1>, <summary_tag2>, ..., <summary_tagN>]')

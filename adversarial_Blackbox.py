@@ -98,7 +98,7 @@ def discrminator_ann(x,output_size,reuse=False,network_size=3):
         output = slim.fully_connected(x, 10, scope='objective/fc_1')
         for ii in range(2,2+network_size):
             output = slim.fully_connected(output, 10, scope='objective/fc_%d'%(ii))
-        output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_5')
+        output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_%d'%(2+network_size))
     return output
 def generator_ann(x,output_size,min_bound=-1,max_bound=1,network_size=3):
     range_required = np.absolute(max_bound - min_bound).astype(np.float64)
@@ -106,7 +106,7 @@ def generator_ann(x,output_size,min_bound=-1,max_bound=1,network_size=3):
         output = slim.fully_connected(x, 10, scope='objective/fc_1')
         for ii in range(2,2+network_size):
             output = slim.fully_connected(output, 10, scope='objective/fc_%d'%(ii))
-        output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_5')
+        output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_%d'%(2+network_size))
         # contrained_output =   range_required * tf.nn.sigmoid(output) + min_bound* tf.ones_like(output)
         contrained_output = tf.nn.tanh(output)
     return contrained_output
@@ -276,7 +276,7 @@ class BlackBoxOptimizer(object):
         self.SUCCESS_THRESHOLD = 0.3
         self.iou_threshold=0.4
         self.weights_file= os.path.join(self.detector_path, FLAGS.weights_file)
-        self.gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9,allow_growth = True)
+        self.gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.7,allow_growth = True)
         self.X_bank = [] ; self.Y_bank = []
         # self.X = np.random.random(size=(self.N,self.nb_parameters)).astype(np.float32)
         # self.Y = np.random.random(size=(self.N,self.z_dim)).astype(np.float32)
@@ -288,7 +288,7 @@ class BlackBoxOptimizer(object):
 
     def fix_paramters_to_scenario(self,FLAGS):
         if FLAGS.is_varsteps:
-            steps_list = [400,420,420,420,420,550,550,350,350,350]
+            steps_list = [400,420,500,420,450,550,550,350,420,480]
         else:
             steps_list = 10*[FLAGS.nb_steps]
         FLAGS.exp_no = np.random.randint(10000,100000)
@@ -436,7 +436,7 @@ class BlackBoxOptimizer(object):
             self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
             self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
             self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
-            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,1])
+            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
             self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
             self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
             self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
@@ -505,8 +505,11 @@ class BlackBoxOptimizer(object):
                 discriminator_Scores = np.concatenate([self.sess.run(self.transmitter_good,feed_dict={self.x_ind:np.array(X_batches[ii])}).reshape(-1) for ii in range(len(X_batches))],axis=0)
                 sorted_indices = flip(np.argsort(discriminator_Scores),axis=0).tolist()
                 # sorted_indices = np.argsort(discriminator_Scores,axis=0).tolist()
-                self.X_bank = self.X_bank + [list(X_IND)[ii] for ii in sorted_indices[:self.valid_size]]
-                self.X_bad =  [list(X_IND)[ii] for ii in sorted_indices[-self.valid_size:]]
+                self.X_bank = self.X_bank + [list(X_IND)[ii] for ii in sorted_indices[:self.induced_size]]
+                self.test_targets =  [list(Y)[ii] for ii in sorted_indices[:self.induced_size]]
+                self.X_bad =  [list(X_IND)[ii] for ii in sorted_indices[-self.induced_size:]]
+                self.test_bad =  [list(Y)[ii] for ii in sorted_indices[-self.induced_size:]]
+
 
 
                 # else:
@@ -529,7 +532,7 @@ class BlackBoxOptimizer(object):
 
                     ### training step
                     if not self.optimize_oracle:
-                        current_oracle_scores = self.detector_agent(self.Y)
+                        current_oracle_scores = self.detector_agent(self.Y).reshape(-1)
 
                     _,current_t_loss = self.sess.run([self.t_optimizer,self.t_loss],
                          feed_dict={self.z:self.Z,self.y:self.Y,self.x_ind:self.X_IND,self.oracle_scores:current_oracle_scores})
@@ -552,7 +555,7 @@ class BlackBoxOptimizer(object):
 
                         self.logger.write("\n\nepoch: %d validation: %2.5f   standard: %2.5f   improvmetn: %2.5f \n\n" %(step,self.avg_loss,self.avg_stdloss,self.avg_loss-self.avg_stdloss))
             else : 
-                self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-0"))
+                self.saver.restore(self.sess,save_path=os.path.join(self.checkpoint_path,"oracle-model-%d" %(self.task_nb)))
                 self.validating_bbgan(valid_size=self.valid_size)
                 if self.is_visualize:
                     self.visualize_bbgan()
@@ -618,34 +621,38 @@ class BlackBoxOptimizer(object):
                 test_Z = np.random.normal(np.zeros(self.z_dim),1,[valid_size,self.z_dim])
                 self.test_X = self.x.eval(feed_dict={self.z:test_Z},session=self.sess)
             if self.cont_train:
-                self.test_bad = black_box_batch(self.X_bad,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
-                self.all_bad_prob =  self.detector_agent(np.array(self.test_bad)).flatten().tolist()
+                # self.test_bad = black_box_batch(self.X_bad,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+                self.all_bad_prob = function_batches(self.detector_agent,self.test_bad,50)
+                self.all_bad_prob = np.vstack(np.array(self.all_bad_prob)).reshape(-1)
+                # self.all_bad_prob =  self.detector_agent(np.array(self.test_bad)).flatten().tolist()
                 self.test_X = np.array(self.X_bank) 
         elif self.exp_type == "Gaussian" or self.exp_type == "Baysian" :
             self.test_X = sample_from_learned_gaussian(self.X_bank, n_components=self.gaussian_nb , n_samples=valid_size)
 
 
-
-        self.test_targets = black_box_batch(self.test_X,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
-        self.test_prob = self.detector_agent(np.array(self.test_targets))
+        if not self.cont_train:
+            self.test_targets = black_box_batch(self.test_X,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+        # self.test_prob = self.detector_agent(np.array(self.test_targets))
+        self.test_prob = function_batches(self.detector_agent,self.test_targets,50)
+        self.test_prob = np.vstack(np.array(self.test_prob)).reshape(-1)
 
         if not self.is_evolve:
-            self.test_std,indx = sample_batch(self.all_Ys,valid_size)
+            self.test_std,indx = sample_batch(self.all_Ys,self.valid_size)
             self.test_stdX = [self.all_Xs[ii] for ii in indx ]
         else :
-            self.test_std,indx = sample_batch(self.retained_Ys,valid_size)
+            self.test_std,indx = sample_batch(self.retained_Ys,self.valid_size)
             self.test_stdX = [self.all_Xs[ii] for ii in indx ]
 
 
-        self.test_stdprob = self.detector_agent(np.array(self.test_std))
+        # self.test_stdprob = self.detector_agent(np.array(self.test_std))
+        self.test_stdprob = function_batches(self.detector_agent,self.test_std,50)
+        self.test_stdprob = np.vstack(np.array(self.test_stdprob)).reshape(-1)
         # all_losses.append(loss)
         self.all_prob =  self.test_prob.flatten().tolist()
         self.all_stdprob = self.test_stdprob.flatten().tolist()
-        # print("the average of %d validation score :" %(len(test_prob)), np.mean(np.array(all_prob),axis=1))
         self.avg_loss = np.mean(self.test_prob.flatten())
         self.avg_stdloss = np.mean(self.test_stdprob.flatten())
-        # print(self.test_X.shape)
-        # raise Exception
+
 
         return 
         
@@ -684,7 +691,7 @@ class BlackBoxOptimizer(object):
 
         sphere_params = OrderedDict()
         for param in range(self.nb_parameters):
-            sphere_params[self.paramters_list[param]] = np.array(self.test_X)[:,ii].tolist()
+            sphere_params[self.paramters_list[param]] = np.array(self.test_X)[:,param].tolist()
         sphere_df = pd.DataFrame(sphere_params)
         sphere_df.to_csv(os.path.join(self.generated_frames_test_dir,'test_params.csv'),sep=',',index=False)
 
@@ -709,7 +716,7 @@ class BlackBoxOptimizer(object):
             self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
             self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
             self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
-            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,1])
+            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
             self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
             self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
             self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
@@ -749,6 +756,8 @@ class BlackBoxOptimizer(object):
         tpe_trials = Trials()
         tpe_algo = tpe.suggest
         self.all_Ys = []
+        self.all_Xs = []
+        self.all_loss = []
         vars_list  = ["x"+str(ii) for ii in range(self.nb_parameters)]
         space = {}
         for keys in vars_list:
@@ -758,7 +767,7 @@ class BlackBoxOptimizer(object):
             self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
             self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
             self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
-            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,1])
+            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
             self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
             self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
             self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
@@ -793,16 +802,24 @@ class BlackBoxOptimizer(object):
                 print("@@@@@@@@@@@@@","ITERATION : ", ITERATION)
                 # raise Exception
                 try:
-                    y = black_box(x,output_size=self.OUT_SIZE,global_step=0,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+                    y = black_box(x,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
                 except:
-                    y = self.all_Ys[-1]
+                    try:
+                        y = black_box(x,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+                    except:
+                        y = self.all_Ys[-1]
                 self.all_Ys.append(y)
+                self.all_Xs.append(x)
                 loss = np.squeeze(self.detector_agent(np.expand_dims(y, axis=0)))
+                self.all_loss.append(loss)
+                if ((ITERATION) % self.log_frq == 0):
+                    tpe_results = pd.DataFrame({'loss': self.all_loss, 'iteration': range(ITERATION),'x':self.all_Xs })
+                    tpe_results.to_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'),sep=',',index=False)
                 return {'loss': loss, 'xs': xs, 'iteration': ITERATION,'status': STATUS_OK}
 
 
             if self.is_train:
-                tpe_best = fmin(fn=objective, space=space, algo=tpe_algo, trials=tpe_trials,max_evals=10000, rstate= np.random.RandomState(50))
+                tpe_best = fmin(fn=objective, space=space, algo=tpe_algo, trials=tpe_trials,max_evals=self.gendist_size, rstate= np.random.RandomState(50))
                 print('Minimum loss attained with TPE:    {:.4f}'.format(tpe_trials.best_trial['result']['loss']))
                 self.all_Xs = [[vars_dics[keys] for keys in vars_list]for vars_dics in [x['xs'] for x in tpe_trials.results]]
                 tpe_results = pd.DataFrame({'loss': [x['loss'] for x in tpe_trials.results], 'iteration': [x['iteration'] for x in tpe_trials.results],'x':self.all_Xs })

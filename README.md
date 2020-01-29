@@ -4,7 +4,7 @@
 
 # SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications
 ### [Paper](https://arxiv.org/pdf/1812.02132.pdf)<br>
-Tensorflow implementation of the paper in [AAAI 2020](http://xai.unist.ac.kr/workshop/2019/). The paper tries to address the robustness of Deep Neeural Networks, but not from pixel-level perturbation lense, rather from semantic lense in which the perturbation happens in the latent parameters that generate the image. This type of robustness is important for safety-critical applications like self-driving cars in which tolerance of error is very low and risk of failure is high. <br><br>
+Tensorflow implementation of [the paper](https://arxiv.org/abs/1812.02132) in [AAAI 2020](http://xai.unist.ac.kr/workshop/2019/). The paper tries to address the robustness of Deep Neeural Networks, but not from pixel-level perturbation lense, rather from semantic lense in which the perturbation happens in the latent parameters that generate the image. This type of robustness is important for safety-critical applications like self-driving cars in which tolerance of error is very low and risk of failure is high. <br><br>
 [SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications](https://arxiv.org/pdf/1812.02132.pdf)  
  [Abdullah Hamdi](https://abdullahamdi.com/), [Matthias Muller](https://matthias.pw/), [Bernard Ghanem](http://www.bernardghanem.com/)
 

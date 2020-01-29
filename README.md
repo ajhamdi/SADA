@@ -58,7 +58,7 @@ If you find this useful for your research, please use the following.
 - Linux 
 - Python 2 or 3
 - NVIDIA GPU (11G memory or larger) + CUDA cuDNN
-- [Blender 2.79(https://www.blender.org/download/releases/2-79/)
+- [Blender 2.79](https://www.blender.org/download/releases/2-79/)
 
 ## Getting Started
 ### Installation

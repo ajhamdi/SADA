@@ -3,7 +3,7 @@
 import numpy as np
 import tensorflow as tf
 from PIL import Image, ImageDraw
-from robustness import *
+from adversarial_Blackbox import *
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -32,8 +32,8 @@ tf.app.flags.DEFINE_integer('nb_steps', 420, 'the number of training steps ')
 tf.app.flags.DEFINE_integer('gendist_size', 10000, 'the size of the generated distribution ')
 
 tf.app.flags.DEFINE_boolean('is_train',True," training mode")
+tf.app.flags.DEFINE_boolean('is_selfdrive',False," trainign selfdriving agent")
 tf.app.flags.DEFINE_boolean('is_gendist',False," generate distribution mode")
-tf.app.flags.DEFINE_boolean('is_genknn', False, " generate distribution mode")
 tf.app.flags.DEFINE_boolean('is_genset',False," generate set from csv  mode")
 tf.app.flags.DEFINE_boolean('is_visualize',True," visualize scores and images of that training batch")
 tf.app.flags.DEFINE_boolean('is_cluster',False," is it running in a cluster ?")
@@ -50,7 +50,9 @@ tf.app.flags.DEFINE_boolean('is_evolve',False," use the output of BBGAN to impro
 tf.app.flags.DEFINE_boolean('keep_bank',False," use partial set iteratively to update the training bank")
 tf.app.flags.DEFINE_boolean('full_set',True," use the full set once in the training")
 
-
+tf.app.flags.DEFINE_float('learning_rate_t',0.0003, 'the adam learning rate of the D')
+tf.app.flags.DEFINE_float('learning_rate_g',0.0003, 'the adam learning rate of the G ')
+tf.app.flags.DEFINE_float('gan_init_variance',0.053 , 'gan inital variance for the D and G')
     
 def randomize_setup(flags):
     exp_type_list = ["Adversarial","Gaussian","Baysian","Finite","GP"]
@@ -93,8 +95,6 @@ def main(argv=None):
             bbexp.generate_distribution()
     elif FLAGS.is_genset:
             bbexp.generate_set()
-    elif FLAGS.is_genknn:
-            bbexp.generated_nearest_neighbor()
 
     elif FLAGS.exp_type == "Adversarial":
         if FLAGS.is_train or FLAGS.cont_train:

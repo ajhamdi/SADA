@@ -56,8 +56,8 @@ def main(root, phase, tags_filename, csv_filename, append_cvs_filename, top_n, c
 
     df.to_csv(csv_filename, index=False)
 
-    top_n_df = filter_top_n(df, tags, top_n)
-    top_n_df.to_csv('top_{}_{}'.format(top_n, csv_filename), index=False)    
+    # top_n_df = filter_top_n(df, tags, top_n)
+    # top_n_df.to_csv('top_{}_{}'.format(top_n, csv_filename), index=False)    
 
 
 if __name__ == '__main__':
@@ -66,7 +66,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-r', '--root', required=True, type=str,
                       help='root directory containing the experiments')
-    parser.add_argument('-p', '--phase', default='data_2', type=str,
+    parser.add_argument('-p', '--phase', default='data_4', type=str,
                       help='s directory containing the tensorflow experiments')
     parser.add_argument('-tags', '--tags_filename', default='tags.json', type=str,
                       help='a json filename with a list of tags: [<summary_tag1>, <summary_tag2>, ..., <summary_tagN>]')

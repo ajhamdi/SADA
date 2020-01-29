@@ -188,8 +188,10 @@ def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_
         if scenario_nb in [1,2]:
             object_instance = get_random_children(parent_name)
             hide_tree(parent_name=object_instance.name,hide=False)
+            change_position("Camera",(-10.48,-0.35,0.1)) ############### EXTRA
         elif scenario_nb == 3:
             hide_tree(parent_name='mycar',hide=False)
+            change_position("Camera",(-13.2,-0.35,0.1)) ############### EXTRA
         elif scenario_nb == 4:
             hide_tree(parent_name='mymotor',hide=False)
         elif scenario_nb == 5:
@@ -204,6 +206,7 @@ def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_
         if scenario_nb in [6,7]:
             object_instance = get_random_children(parent_name)
             hide_tree(parent_name=object_instance.name,hide=False)
+            change_position("Camera",(-10.48,-0.35,0.1)) ############### EXTRA
         elif scenario_nb == 8:
             hide_tree(parent_name='mycar',hide=False)
         elif scenario_nb == 9:
@@ -211,7 +214,7 @@ def city_experiment(obj_name="myorigin",vec=[0.,0.,0.,0.,0.,0.,0.,0.,0.],parent_
         elif scenario_nb == 10:
             hide_tree(parent_name='mymotor2',hide=False)
         rotate_object(obj_name,(0,translate(vec[1],X_MIN,X_MAX,0,0.9),translate(vec[0],X_MIN,X_MAX,-3.15,3.15)))
-        change_position("mystop",(-9.44385,translate(vec[2],X_MIN,X_MAX,1.58874,1.76874),1.21885))
+        change_position("mystop",(-9.44385,translate(vec[2],X_MIN,X_MAX,1.76874,1.58874),1.21885))
 
 
         # energize_lamp(lamp_name="Lamp.002",energy=translate(vec[5],X_MIN,X_MAX,0.3,2.5))

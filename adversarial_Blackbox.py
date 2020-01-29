@@ -25,7 +25,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 plt.ioff()
-import seaborn as sns
+# import seaborn as sns
 from scipy import signal
 import cv2
 # import rbfopt  # black_box_optimization library
@@ -41,7 +41,7 @@ slim = tf.contrib.slim
 import imageio
 
 def sample_from_learned_gaussian(points_to_learn,n_components=1,n_samples=10,is_truncate=True ,is_reject=False ,min_value=-1,max_value=1):
-    gmm = mixture.GaussianMixture(n_components=5, covariance_type='full',max_iter=5000).fit(points_to_learn)
+    gmm = mixture.GaussianMixture(n_components=n_components, covariance_type='full',max_iter=50000).fit(points_to_learn)
     if is_truncate:
         return np.clip(gmm.sample(n_samples=n_samples)[0],min_value,max_value)
     elif is_reject:
@@ -90,6 +90,8 @@ def dicrminator_cnn(x,conv_input_size, output_size, repeat_num ,reuse=False):
         z_prob = tf.nn.sigmoid(z)
         return z , z_prob
 
+def string_to_float_list(A):
+    return [float(x) for x in A[1:-1].split(',')]
 
 def discrminator_ann(x,output_size,reuse=False,network_size=3):
     with tf.variable_scope("discriminator") as scope:
@@ -111,24 +113,9 @@ def generator_ann(x,output_size,min_bound=-1,max_bound=1,network_size=3):
         contrained_output = tf.nn.tanh(output)
     return contrained_output
 
-def load_dataset_names(file_name):
-    names = {}
-    with open(file_name) as f:
-        for id, name in enumerate(f):
-            names[id] = name
-    return names
 
-def find_key(dict,value):
-    for key, values in dict.items():    # for name, age in dictionary.iteritems():  (for Python 2.x)
-        if value == values:
-            return key
 
-def match_two_dictionaries(dict1,dict2):
-    result_dict = {}
-    for key2, vlue2 in dict2.items():
-        if vlue2 in list(dict1.values()):
-            result_dict[find_key(dict1,vlue2)] = key2 
-    return result_dict
+
 def prepare_config_dict(mydict,ommit_list=[]):
     for k in ommit_list:
         mydict.pop(k, None)
@@ -180,8 +167,11 @@ def black_box_batch(input_vectors,output_size=256,global_step=0,frames_path=None
     for input_vector in input_vectors:
         try:
             images.append(black_box(np.array(input_vector),output_size,global_step,frames_path,cluster,parent_name,scenario_nb))
+            # images.append(black_box(np.array(input_vector),output_size,len(images),frames_path,cluster,parent_name,scenario_nb))
+
         except:
             continue
+    # print("&&&&&&&&&&&&&&&&&&&&&\n\n",np.linalg.norm(np.mean(np.array(images) - np.broadcast_to(np.mean(np.array(images),axis=0),np.array(images).shape),axis=2),ord="fro"))
     return images
 
 def read_csv_list(file_name=None,col_indices=[0]):
@@ -240,8 +230,9 @@ class BlackBoxOptimizer(object):
         self.PASCAL_TO_COCO = match_two_dictionaries(self.pascal_classes,self.coco_classes)
         self.pascal_list = ['aeroplane','bench', 'bicycle', 'boat', 'bottle', 'bus', 'car','chair','diningtable', 'motorbike', 'train', 'truck']
         if self.scenario_nb == 0:
-            self.paramters_list = ["camera distance to object"  ,"Camera azimuth(-180,180)" ,"camera pitch (0,50)" ,"light azimth wrt camera(-180,180)" , "light pitch (0,90)",
-             "texture R-channel","texture G-channel","texture B-channel"]
+            # self.paramters_list = ["camera distance to object"  ,"Camera azimuth(-180,180)" ,"camera pitch (0,50)" ,"light azimth wrt camera(-180,180)" , "light pitch (0,90)",
+            #  "texture R-channel","texture G-channel","texture B-channel"]
+            self.paramters_list =['cameraDistanceToObject',    'CameraAzimuth__180_180_',    'cameraPitch_0_50_',    'lightAzimthWrtCamera__180_180_',    'lightPitch_0_90_',    'textureR_channel',    'textureG_channel',    'textureB_channel']
         elif self.scenario_nb in list(range(1,6)):
             self.paramters_list = ["Camera azimuth(-180,180)" ,"camera pitch (0,50)" ,"light azimth wrt camera(-180,180)" , "light pitch (0,90)"]
         elif self.scenario_nb in list(range(6,11)):
@@ -288,10 +279,10 @@ class BlackBoxOptimizer(object):
 
     def fix_paramters_to_scenario(self,FLAGS):
         if FLAGS.is_varsteps:
-            steps_list = [400,420,500,420,450,550,550,350,420,480]
+            steps_list = [400,420,400,200,450,250,550,400,420,480]
         else:
             steps_list = 10*[FLAGS.nb_steps]
-        FLAGS.exp_no = np.random.randint(10000,100000)
+        FLAGS.exp_no = np.random.randint(100000,1000000)
         if FLAGS.scenario_nb in list(range(1,6)):
             FLAGS.nb_parameters = 4
             FLAGS.nb_steps = steps_list[FLAGS.scenario_nb-1]
@@ -330,6 +321,21 @@ class BlackBoxOptimizer(object):
             saved_dict = {'x':all_Xs}
             cPickle.dump(saved_dict,fp)
         self.logger.write("The number of generated images : %d" %(len(all_Xs)) )
+
+
+
+    def generate_set(self):
+
+        # sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_gp_regression_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+        # sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_svm_multi_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+        sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_gmm.csv".format(str(self.class_nb).rjust(2, '0'))))
+
+        mid_list = np.array([list(sphere_params[self.paramters_list[param]]) for param in range(self.nb_parameters) ]).T
+        self.X_bank = [mid_list[ii,:] for ii in range(mid_list.shape[0])]
+        print("start learning GP regression")
+        for ii , param in enumerate(self.X_bank):
+            _ = black_box(np.array(param),output_size=self.OUT_SIZE,global_step=ii,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+
 
 
     def learn_selfdrive(self):
@@ -591,8 +597,14 @@ class BlackBoxOptimizer(object):
             current_oracle_scores = np.vstack(np.array(current_oracle_scores)).reshape(-1)
             # sorted_indices = flip(np.argsort(current_oracle_scores),axis=0).tolist()
             sorted_indices = np.argsort(current_oracle_scores,axis=0).tolist()
-            self.X_bank = self.X_bank + self.K*[X_IND[ii] for ii in sorted_indices[:induced_size]]
-            self.Y_bank = self.Y_bank + self.K*[Y[ii] for ii in sorted_indices[:induced_size]]
+            if  self.exp_type == "Gaussian" or self.exp_type == "GP":
+                self.X_bank = self.X_bank + [X_IND[ii] for ii in sorted_indices[:induced_size]]
+                self.Y_bank = self.Y_bank + [Y[ii] for ii in sorted_indices[:induced_size]]
+            else :
+                self.X_bank = self.X_bank + self.K*[X_IND[ii] for ii in sorted_indices[:induced_size]]
+                self.Y_bank = self.Y_bank + self.K*[Y[ii] for ii in sorted_indices[:induced_size]]
+
+
 
         else:
             self.X_IND, indx = sample_batch(self.all_Xs,self.batch_size)
@@ -628,17 +640,26 @@ class BlackBoxOptimizer(object):
                 self.test_X = np.array(self.X_bank) 
         elif self.exp_type == "Gaussian" or self.exp_type == "Baysian" :
             self.test_X = sample_from_learned_gaussian(self.X_bank, n_components=self.gaussian_nb , n_samples=valid_size)
+            # self.test_X = 10*self.X_bank #####################################
+
+        elif self.exp_type == "GP":
+            self.test_X = self.X_bank.copy()
+            # self.test_targets = self.Y_bank.copy() #######################
 
 
-        if not self.cont_train:
+        if not self.cont_train: # and  self.exp_type != "GP" : ################
             self.test_targets = black_box_batch(self.test_X,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
         # self.test_prob = self.detector_agent(np.array(self.test_targets))
         self.test_prob = function_batches(self.detector_agent,self.test_targets,50)
         self.test_prob = np.vstack(np.array(self.test_prob)).reshape(-1)
 
+
         if not self.is_evolve:
             self.test_std,indx = sample_batch(self.all_Ys,self.valid_size)
             self.test_stdX = [self.all_Xs[ii] for ii in indx ]
+            # if self.exp_type == "GP":
+            #     self.test_std = self.all_Ys.copy()
+            #     self.test_stdX = self.all_Xs.copy()
         else :
             self.test_std,indx = sample_batch(self.retained_Ys,self.valid_size)
             self.test_stdX = [self.all_Xs[ii] for ii in indx ]
@@ -664,14 +685,15 @@ class BlackBoxOptimizer(object):
         imageio.mimsave(os.path.join(self.generated_frames_test_dir,"s_%d_%d.gif"%(step,self.evolve_step)),[inverse_transform(img) for img in self.test_targets])
         save_image(np.array([inverse_transform(img) for img in sample_batch(self.test_targets,16)[0]]), os.path.join(self.generated_frames_test_dir,"s_%d_%d.png"%(step,self.evolve_step)),
          nrow=4, padding=2,normalize=False, scale_each=False)
+        imsave(np.array([inverse_transform(img) for img in sample_batch(self.test_targets,16)[0]]),size=self.OUT_SIZE,path=os.path.join(self.generated_frames_test_dir,"s_%d_%d.png"%(step,self.evolve_step)),is_all=True)
+        imsave(np.array([inverse_transform(img) for img in sample_batch(self.test_std,16)[0]]),size=self.OUT_SIZE,path=os.path.join(self.generated_frames_test_dir,"r_%d_%d.png"%(step,self.evolve_step)),is_all=True)
             # imageio.mimsave(os.path.join(self.generated_frames_test_dir,"r_%d.gif"%(epoch)),[inverse_transform(img) for img in self.test_std])
         # if self.is_cluster:
-        if self.is_train:
-            plt.figure(figsize = (8, 6))
-            plt.hist([self.all_prob,self.all_stdprob],color=["b","r"], label=["BBGAN","Random"], bins=100, range=(0.0,1.0))
-            plt.legend()
-            plt.savefig(os.path.join(self.generated_frames_test_dir,"histogram_%d_%d.jpg"%(step,self.evolve_step)))
-            plt.close()
+        plt.figure(figsize = (8, 6))
+        plt.hist([self.all_prob,self.all_stdprob],color=["b","r"], label=["BBGAN","Random"], bins=100, range=(0.0,1.0))
+        plt.legend()
+        plt.savefig(os.path.join(self.generated_frames_test_dir,"histogram_%d_%d.jpg"%(step,self.evolve_step)))
+        plt.close()
 
         if self.cont_train:
             plt.figure(figsize = (8, 6))
@@ -683,7 +705,7 @@ class BlackBoxOptimizer(object):
         
         plt.figure(figsize = (8, 6))
         for ii in range(self.nb_parameters):
-            sns.kdeplot(np.array(self.test_X)[:,ii].tolist(), linewidth = 1, shade = False, label=self.paramters_list[ii],clip=(-1,1))
+            sns.kdeplot(np.array(self.test_X)[:,ii].tolist(), linewidth = 2, shade = False, label=self.paramters_list[ii],clip=(-1,1))
         plt.legend()
         plt.xlim(-1,1)    
         plt.savefig(os.path.join(self.generated_frames_test_dir,"parmeters_%d_%d.jpg"%(step,self.evolve_step)))
@@ -741,9 +763,80 @@ class BlackBoxOptimizer(object):
                 self.inducer_bbgan(induced_size=self.induced_size)
                 print("start learning mixture of gaussians")
                 self.validating_bbgan(valid_size=self.valid_size)
+                self.register_metrics()
                 if self.is_visualize:
                     self.visualize_bbgan(step=0)
+
+    def learn_gp(self):
+        self.evolve_step=0
+        with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
+            saved_dict = cPickle.load(fp)
+        self.all_Xs = saved_dict["x"] 
+        self.all_Ys, missing_indices  = my_read_images(self.generated_frames_train_dir,self.OUT_SIZE,self.OUT_SIZE,expected_number=len(self.all_Xs),extension="jpg",d_type=np.float32,normalize=True)
+        if len(self.all_Ys) != len(self.all_Xs):
+            print("@@@@@@@@@@@",len(self.all_Xs))
+            for ii in missing_indices:
+                del self.all_Xs[ii]
+        if len(self.all_Ys) != len(self.all_Xs):
+            self.all_Ys = self.all_Ys[0:len(self.all_Xs)]
+            # raise ValueError("some images were not read properly ... the corrsponding Xs are not correct")
+        self.retained_Ys = self.all_Ys.copy() 
+
+        with tf.Graph().as_default() as self.g:
+            self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
+            self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
+            self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
+            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
+            self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
+            self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
+            self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
+            self.focal_weights =self.oracle_scores ** self.gamma
+            self.focal_weights_avg = tf.reduce_mean(self.focal_weights)
+            self.y = tf.placeholder(tf.float32, [None,self.OUT_SIZE,self.OUT_SIZE, 3])
+
+            with tf.device('/GPU:0'):
+                with tf.variable_scope('detector'):
+                    detections = yolo_v3(self.y, len(self.coco_classes), data_format='NHWC')
+                    load_ops = load_weights(tf.global_variables(scope='detector'), self.weights_file)
+
+                self.boxes = detections_boxes(detections)
+
+            self.define_metrics()
+        with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
+            self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
+            tf.global_variables_initializer().run()
+            self.sess.run(load_ops)
+            if self.is_train:
+                self.start_time = time.time()
+                self.inducer_bbgan(induced_size=self.induced_size)
+                print("start learning GP regression")
+                self.validating_bbgan(valid_size=self.valid_size)
                 self.register_metrics()
+
+                sphere_params = OrderedDict()
+                for param in range(self.nb_parameters):
+                    sphere_params[self.paramters_list[param]] = np.array(self.all_Xs)[:,param].tolist()
+                sphere_params['score'] = self.test_stdprob.tolist()
+                sphere_df = pd.DataFrame(sphere_params)
+                sphere_df.to_csv(os.path.join(self.generated_path,"gp_params","class_{}.csv".format(str(self.class_nb))),sep=',',index=False)
+            
+            else:
+                # sphere_params = pd.read_csv(os.path.join(self.generated_path,"gp_params","{}_gp_regression_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+                # sphere_params = pd.read_csv(os.path.join(self.generated_path,"gp_params","{}_svm_multi_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+                sphere_params = pd.read_csv(os.path.join(self.generated_path,"scenario_params","test_params_{}.csv".format(str(self.task_nb))))
+                mid_list = np.array([list(sphere_params[self.paramters_list[param]]) for param in range(self.nb_parameters) ]).T
+                self.X_bank = [mid_list[ii,:] for ii in range(mid_list.shape[0])]
+                self.start_time = time.time()
+                print("start learning GP regression")
+                self.validating_bbgan(valid_size=self.valid_size)
+                self.register_metrics()
+
+
+
+
+
+                # if self.is_visualize:
+                #     self.visualize_bbgan(step=0)
 
 
     def learn_baysian(self):
@@ -756,6 +849,8 @@ class BlackBoxOptimizer(object):
         tpe_trials = Trials()
         tpe_algo = tpe.suggest
         self.all_Ys = []
+        if not self.is_train:
+            self.all_Ys, missing_indices  = my_read_images(self.generated_frames_train_dir,self.OUT_SIZE,self.OUT_SIZE, extension='jpg',d_type=np.float32,normalize=True)
         self.all_Xs = []
         self.all_loss = []
         vars_list  = ["x"+str(ii) for ii in range(self.nb_parameters)]
@@ -829,20 +924,28 @@ class BlackBoxOptimizer(object):
 
 
             self.evolve_step=0
-            with open(os.path.join(self.generated_frames_train_dir,"baysian.pkl"),'rb') as fp:
-                tpe_results = pd.DataFrame(cPickle.load(fp))
-            self.all_Xs = list(tpe_results["x"]) 
-            if len(self.all_Ys) != len(self.all_Xs):
-                raise Exception("some images were not read properly ... the corrsponding Xs are not correct")
+            try:
+                with open(os.path.join(self.generated_frames_train_dir,"baysian.pkl"),'rb') as fp:
+                    tpe_results = pd.DataFrame(cPickle.load(fp))
+                self.all_Xs = list(tpe_results["x"]) 
+            except:
+                tpe_results = pd.read_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'))
+                self.all_Xs = [string_to_float_list(a) for a in list(tpe_results["x"]) ]
 
             self.X_bank = self.X_bank + self.all_Xs[-self.induced_size:]
             self.Y_bank = self.Y_bank + self.all_Ys[-self.induced_size:]
 
+            if not self.is_train:
+                with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
+                    saved_dict = cPickle.load(fp)
+                self.all_Xs = saved_dict["x"] 
             print("start learning mixture of gaussians for the baysian")
             self.validating_bbgan(valid_size=self.valid_size)
+            self.register_metrics()
             if self.is_visualize:
                 self.visualize_bbgan(step=0)
-            self.register_metrics()
+
+
 
 
     def define_metrics(self):

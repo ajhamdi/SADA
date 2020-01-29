@@ -14,8 +14,8 @@ from sklearn.preprocessing import StandardScaler
 #import matplotlib.cbook as cbook
 import time
 import sys
-from skimage import  io
-from skimage.transform import rescale, resize, downscale_local_mean
+# from skimage import  io
+# from skimage.transform import rescale, resize, downscale_local_mean
 from scipy.misc import imread
 from scipy.misc import imresize
 import scipy.io as sio

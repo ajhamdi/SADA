@@ -375,8 +375,39 @@ def add_gaussian_noise(X_imgs):
         gaussian_noise_imgs.append(gaussian_img)
     # gaussian_noise_imgs = np.array(gaussian_noise_imgs, dtype = np.float32)
     return gaussian_noise_imgs
+
+def find_key(dict,value):
+    """
+    finds a specific key in dict that have specific value 
+    """
+    for key, values in dict.items():    # for name, age in dictionary.iteritems():  (for Python 2.x)
+        if value == values:
+            return key
+
+
+def match_two_dictionaries(dict1,dict2):
+    """
+    mathcs two dictionaries together by remapping dict keys that has correpondance value in dict2 to keys in dict2 that have these values 
+
+    """
+    result_dict = {}
+    for key2, vlue2 in dict2.items():
+        if vlue2 in list(dict1.values()):
+            result_dict[find_key(dict1,vlue2)] = key2 
+    return result_dict
     
 # https://medium.com/ymedialabs-innovation/data-augmentation-techniques-in-cnn-using-tensorflow-371ae43d5be9
+
+
+def load_dataset_names(file_name):
+    """
+    loads the class names of the dataset from a list text file or python file and returns a dictionary that represent the dataset
+    """
+    names = {}
+    with open(file_name) as f:
+        for id, name in enumerate(f):
+            names[id] = name
+    return names
 
 def sample_batch(all_list,batch_size):
     indices = np.random.choice(len(all_list), batch_size)

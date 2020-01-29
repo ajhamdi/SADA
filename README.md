@@ -13,11 +13,20 @@ Tensorflow implementation of the paper in [AAAI 2020](http://xai.unist.ac.kr/wor
 If you find this useful for your research, please use the following.
 
 ```
-@article{hamdi2019towards,
-  title={Towards Analyzing Semantic Robustness of Deep Neural Networks},
-  author={Hamdi, Abdullah and Ghanem, Bernard},
-  journal={arXiv preprint arXiv:1904.04621},
-  year={2019}
+@article{DBLP:journals/corr/abs-1812-02132,
+  author    = {Abdullah Hamdi and
+               Matthias M{\"{u}}ller and
+               Bernard Ghanem},
+  title     = {{SADA:} Semantic Adversarial Diagnostic Attacks for Autonomous Applications},
+  journal   = {CoRR},
+  volume    = {abs/1812.02132},
+  year      = {2018},
+  url       = {http://arxiv.org/abs/1812.02132},
+  archivePrefix = {arXiv},
+  eprint    = {1812.02132},
+  timestamp = {Fri, 15 Nov 2019 17:16:40 +0100},
+  biburl    = {https://dblp.org/rec/bib/journals/corr/abs-1812-02132},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 ```
 
@@ -49,10 +58,11 @@ If you find this useful for your research, please use the following.
 - Linux 
 - Python 2 or 3
 - NVIDIA GPU (11G memory or larger) + CUDA cuDNN
+- [Blender 2.79(https://www.blender.org/download/releases/2-79/)
 
 ## Getting Started
 ### Installation
-- install [anaconda](https://docs.anaconda.com/anaconda/install/) and then run the following commans 
+- install [Blender](https://www.blender.org/download/releases/2-79/) and then run the following commans 
 ```bash
 conda env create -f environment.yaml
 source activate semantic

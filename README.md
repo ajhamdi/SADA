@@ -84,7 +84,7 @@ cd SADA
 
 <br>
 
-## Gebnerating images from the 3D environment for a specific class with random parameters and storing the 2D dataset in the folder `generated` 
+## Generating images from the 3D environment for a specific class with random parameters and storing the 2D dataset in the folder `generated` 
 
 ```
 python main.py --is_gendist=True --class_nb= 0 --dataset_nb= 0 --gendist_size= 10000

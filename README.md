@@ -42,7 +42,7 @@ If you find this useful for your research, please use the following.
 - install the following `conda` environment as follows: 
 ```bash
 conda env create -f environment.yaml
-conda activate activate sada
+conda  activate sada
 ```
 - Clone this repo:
 ```bash

@@ -9,7 +9,6 @@ import scipy.misc
 import time
 import random
 import pickle as cPickle
-from PIL import Image, ImageDraw
 from collections import OrderedDict
 from glob import glob
 from scipy import spatial
@@ -33,166 +32,14 @@ import cv2
 from detectors.yolo_v3 import yolo_v3, load_weights, detections_boxes, non_max_suppression
 from utils import *
 from models import *
+from ops import *
 from scipy.linalg import circulant, norm
 from scipy import linalg
-from sklearn import mixture
 import scipy.io as sio
 import tensorflow as tf
 import imageio
 
-def sample_from_learned_gaussian(points_to_learn,n_components=1,n_samples=10,is_truncate=True ,is_reject=False ,min_value=-1,max_value=1):
-    gmm = mixture.GaussianMixture(n_components=n_components, covariance_type='full',max_iter=50000).fit(points_to_learn)
-    if is_truncate:
-        return np.clip(gmm.sample(n_samples=n_samples)[0],min_value,max_value)
-    elif is_reject:
-        sample_list = []
-        MAX_ITER = 100000000
-        iteration = 0
-        a = list(gmm.sample(n_samples=100*n_samples)[0])    
-        while len(sample_list)< n_samples and iteration<MAX_ITER:
-            if (a[iteration] >= min_value).all() and (a[iteration] <= max_value).all():
-                sample_list.append(a[iteration])
-            iteration += 1
-        return np.array(sample_list)
-    else :
-        return gmm.sample(n_samples=n_samples)[0]  #, gmm.means_, gmm.covariances
 
-
-def objective_function(x,output_size):
-    hidden = slim.fully_connected(x, 10, scope='objective/fc_1')
-    output = slim.fully_connected(hidden, 2*output_size, scope='objective/fc_2')
-    output = slim.fully_connected(output, 3*output_size, scope='objective/fc_3')
-    output = slim.fully_connected(output, 3*output_size, scope='objective/fc_4')
-    output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_5')
-
-    return output
-
-def dicrminator_cnn(x,conv_input_size, output_size, repeat_num ,reuse=False):
-    with tf.variable_scope("oracle") as scope:
-        if reuse:
-            scope.reuse_variables()
-        # Encoder
-        x = slim.conv2d(x, conv_input_size, 3, 1, activation_fn=tf.nn.elu)
-
-        prev_channel_num = conv_input_size
-        for idx in range(repeat_num):
-            channel_num = conv_input_size * (idx + 1)
-            x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu)
-            x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu)
-            if idx < repeat_num - 1:
-                x = slim.conv2d(x, channel_num, 3, 2, activation_fn=tf.nn.elu)
-                #x = tf.contrib.layers.max_pool2d(x, [2, 2], [2, 2], padding='VALID')
-
-        # x = tf.reshape(x, [-1, np.prod([8, 8, channel_num])])
-        # x = tf.reshape(x, [x.shape[0], -1])
-        x = slim.flatten(x)
-        z = slim.fully_connected(x, output_size, activation_fn=None)
-        z_prob = tf.nn.sigmoid(z)
-        return z , z_prob
-
-def string_to_float_list(A):
-    return [float(x) for x in A[1:-1].split(',')]
-
-
-def check_folder(data_dir):
-    """
-    checks if folder exists and create if doesnt exist
-    """
-    if not os.path.exists(data_dir):
-        os.mkdir(data_dir)
-
-def discrminator_ann(x,output_size,reuse=False,network_size=3):
-    with tf.variable_scope("discriminator") as scope:
-        if reuse:
-            scope.reuse_variables()
-        output = slim.fully_connected(x, 10, scope='objective/fc_1')
-        for ii in range(2,2+network_size):
-            output = slim.fully_connected(output, 10, scope='objective/fc_%d'%(ii))
-        output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_%d'%(2+network_size))
-    return output
-def generator_ann(x,output_size,min_bound=-1,max_bound=1,network_size=3):
-    range_required = np.absolute(max_bound - min_bound).astype(np.float64)
-    with tf.variable_scope("generator") as scope:
-        output = slim.fully_connected(x, 10, scope='objective/fc_1')
-        for ii in range(2,2+network_size):
-            output = slim.fully_connected(output, 10, scope='objective/fc_%d'%(ii))
-        output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_%d'%(2+network_size))
-        # contrained_output =   range_required * tf.nn.sigmoid(output) + min_bound* tf.ones_like(output)
-        contrained_output = tf.nn.tanh(output)
-    return contrained_output
-
-
-
-
-def prepare_config_dict(mydict,ommit_list=[]):
-    for k in ommit_list:
-        mydict.pop(k, None)
-    for k ,v in mydict.items():
-        if isinstance(v, bool):
-            mydict[k] = int(v)
-    return mydict
-
-def function_batches(function,input_list=range(1000),slice_size=100):
-    full_output = []
-    x_batches = [input_list[ii:ii+slice_size] for ii in range(0, len(input_list), slice_size)]
-    # if len(input_list) % self.slice_size != 0 :
-    #     x_batches.pop()
-    for ii in range(len(x_batches)):
-        full_output.append(function(x_batches[ii]))
-    return full_output
-# a function that applies the function in the argument ( which accepts athe list of inputs ) as batches and returen a list of batched output 7
-
-
-def draw_boxes(boxes, img, cls_names, detection_size):
-    draw = ImageDraw.Draw(img)
-
-    for cls, bboxs in boxes.items():
-        # color = tuple(np.random.randint(0, 256, 3))
-        color = tuple(255,0,0)
-        for box, score in bboxs:
-            box = convert_to_original_size(box, np.array(detection_size), np.array(img.size))
-            draw.rectangle(box, outline=color)
-            draw.text(box[:2], '{} {:.2f}%'.format(cls_names[cls], score * 100), fill=color)
-
-def convert_to_original_size(box, size, original_size):
-    ratio = original_size / size
-    box = box.reshape(2, 2) * ratio
-    return list(box.reshape(-1))
-
-
-def black_box(input_vector,output_size=256,global_step=0,frames_path=None,cluster=False,parent_name='car',scenario_nb=0):
-    b = Blender(cluster,'init.py','3d/training_pascal/training.blend')
-    b.city_experiment(obj_name="myorigin", vec=np.array(input_vector).tolist(),parent_name=parent_name,scenario_nb=scenario_nb)
-    b.save_image(output_size,output_size,path=frames_path,name=str(global_step))
-    # b.save_file()
-    b.execute()
-    image = cv2.imread(os.path.join(frames_path,str(global_step)+".jpg"))
-    image = forward_transform(cv2.cvtColor(image,cv2.COLOR_BGR2RGB).astype(np.float32))
-    return image
-
-def black_box_batch(input_vectors,output_size=256,global_step=0,frames_path=None,cluster=False,parent_name='car',scenario_nb=0):
-    images =[]
-    for input_vector in input_vectors:
-        try:
-            images.append(black_box(np.array(input_vector),output_size,global_step,frames_path,cluster,parent_name,scenario_nb))
-            # images.append(black_box(np.array(input_vector),output_size,len(images),frames_path,cluster,parent_name,scenario_nb))
-
-        except:
-            continue
-    # print("&&&&&&&&&&&&&&&&&&&&&\n\n",np.linalg.norm(np.mean(np.array(images) - np.broadcast_to(np.mean(np.array(images),axis=0),np.array(images).shape),axis=2),ord="fro"))
-    return images
-
-
-def normalize_vectors_list(vector_list,old_max,old_min,new_max,new_min):
-    old_range = old_max - old_min
-    new_range = new_max - new_min
-    range_ratio = new_range/ old_range
-    matrix = np.array(vector_list)
-    matrix = np.broadcast_to(new_min,matrix.shape) + (matrix - np.broadcast_to(old_min,matrix.shape))* np.broadcast_to(range_ratio,matrix.shape)
-    return list(matrix)
-
-
- 
 class BlackBoxOptimizer(object):
     CAR_CLASS = 2
 
@@ -321,18 +168,18 @@ class BlackBoxOptimizer(object):
 
 
 
-    def generate_set(self):
+    # def generate_set(self):
 
-        # sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_gp_regression_best.csv".format(str(self.class_nb).rjust(2, '0'))))
-        # sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_svm_multi_best.csv".format(str(self.class_nb).rjust(2, '0'))))
-        sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_gmm.csv".format(str(self.class_nb).rjust(2, '0'))))
+    #     # sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_gp_regression_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+    #     # sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_svm_multi_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+    #     sphere_params = pd.read_csv(os.path.join(self.generated_path,"requested_params","{}_gmm.csv".format(str(self.class_nb).rjust(2, '0'))))
         
 
-        mid_list = np.array([list(sphere_params[self.paramters_list[param]]) for param in range(self.nb_parameters) ]).T
-        self.X_bank = [mid_list[ii,:] for ii in range(mid_list.shape[0])]
-        print("start learning GP regression")
-        for ii , param in enumerate(self.X_bank):
-            _ = black_box(np.array(param),output_size=self.OUT_SIZE,global_step=ii,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+    #     mid_list = np.array([list(sphere_params[self.paramters_list[param]]) for param in range(self.nb_parameters) ]).T
+    #     self.X_bank = [mid_list[ii,:] for ii in range(mid_list.shape[0])]
+    #     print("start learning GP regression")
+    #     for ii , param in enumerate(self.X_bank):
+    #         _ = black_box(np.array(param),output_size=self.OUT_SIZE,global_step=ii,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
 
     def generated_nearest_neighbor(self):
         self.nb_parameters = 8
@@ -721,183 +568,179 @@ class BlackBoxOptimizer(object):
                 if self.is_visualize:
                     self.visualize_bbgan(step=0)
 
-    def learn_gp(self):
-        self.evolve_step=0
-        with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
-            saved_dict = cPickle.load(fp)
-        self.all_Xs = saved_dict["x"] 
-        self.all_Ys, missing_indices  = my_read_images(self.generated_frames_train_dir,self.OUT_SIZE,self.OUT_SIZE,expected_number=len(self.all_Xs),extension="jpg",d_type=np.float32,normalize=True)
-        if len(self.all_Ys) != len(self.all_Xs):
-            print("@@@@@@@@@@@",len(self.all_Xs))
-            for ii in missing_indices:
-                del self.all_Xs[ii]
-        if len(self.all_Ys) != len(self.all_Xs):
-            self.all_Ys = self.all_Ys[0:len(self.all_Xs)]
-            # raise ValueError("some images were not read properly ... the corrsponding Xs are not correct")
-        self.retained_Ys = self.all_Ys.copy() 
+    # def learn_gp(self):
+    #     self.evolve_step=0
+    #     with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
+    #         saved_dict = cPickle.load(fp)
+    #     self.all_Xs = saved_dict["x"] 
+    #     self.all_Ys, missing_indices  = my_read_images(self.generated_frames_train_dir,self.OUT_SIZE,self.OUT_SIZE,expected_number=len(self.all_Xs),extension="jpg",d_type=np.float32,normalize=True)
+    #     if len(self.all_Ys) != len(self.all_Xs):
+    #         print("@@@@@@@@@@@",len(self.all_Xs))
+    #         for ii in missing_indices:
+    #             del self.all_Xs[ii]
+    #     if len(self.all_Ys) != len(self.all_Xs):
+    #         self.all_Ys = self.all_Ys[0:len(self.all_Xs)]
+    #         # raise ValueError("some images were not read properly ... the corrsponding Xs are not correct")
+    #     self.retained_Ys = self.all_Ys.copy() 
 
-        with tf.Graph().as_default() as self.g:
-            self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
-            self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
-            self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
-            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
-            self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
-            self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
-            self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
-            self.focal_weights =self.oracle_scores ** self.gamma
-            self.focal_weights_avg = tf.reduce_mean(self.focal_weights)
-            self.y = tf.placeholder(tf.float32, [None,self.OUT_SIZE,self.OUT_SIZE, 3])
+    #     with tf.Graph().as_default() as self.g:
+    #         self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
+    #         self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
+    #         self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
+    #         self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
+    #         self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
+    #         self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
+    #         self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
+    #         self.focal_weights =self.oracle_scores ** self.gamma
+    #         self.focal_weights_avg = tf.reduce_mean(self.focal_weights)
+    #         self.y = tf.placeholder(tf.float32, [None,self.OUT_SIZE,self.OUT_SIZE, 3])
 
-            with tf.device('/GPU:0'):
-                with tf.variable_scope('detector'):
-                    detections = yolo_v3(self.y, len(self.coco_classes), data_format='NHWC')
-                    load_ops = load_weights(tf.global_variables(scope='detector'), self.weights_file)
+    #         with tf.device('/GPU:0'):
+    #             with tf.variable_scope('detector'):
+    #                 detections = yolo_v3(self.y, len(self.coco_classes), data_format='NHWC')
+    #                 load_ops = load_weights(tf.global_variables(scope='detector'), self.weights_file)
 
-                self.boxes = detections_boxes(detections)
+    #             self.boxes = detections_boxes(detections)
 
-            self.define_metrics()
-        with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
-            self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
-            tf.global_variables_initializer().run()
-            self.sess.run(load_ops)
-            if self.is_train:
-                self.start_time = time.time()
-                self.inducer_bbgan(induced_size=self.induced_size)
-                print("start learning GP regression")
-                self.validating_bbgan(valid_size=self.valid_size)
-                self.register_metrics()
+    #         self.define_metrics()
+    #     with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
+    #         self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
+    #         tf.global_variables_initializer().run()
+    #         self.sess.run(load_ops)
+    #         if self.is_train:
+    #             self.start_time = time.time()
+    #             self.inducer_bbgan(induced_size=self.induced_size)
+    #             print("start learning GP regression")
+    #             self.validating_bbgan(valid_size=self.valid_size)
+    #             self.register_metrics()
 
-                sphere_params = OrderedDict()
-                for param in range(self.nb_parameters):
-                    sphere_params[self.paramters_list[param]] = np.array(self.all_Xs)[:,param].tolist()
-                sphere_params['score'] = self.test_stdprob.tolist()
-                sphere_df = pd.DataFrame(sphere_params)
-                sphere_df.to_csv(os.path.join(self.generated_path,"gp_params","class_{}.csv".format(str(self.class_nb))),sep=',',index=False)
+    #             sphere_params = OrderedDict()
+    #             for param in range(self.nb_parameters):
+    #                 sphere_params[self.paramters_list[param]] = np.array(self.all_Xs)[:,param].tolist()
+    #             sphere_params['score'] = self.test_stdprob.tolist()
+    #             sphere_df = pd.DataFrame(sphere_params)
+    #             sphere_df.to_csv(os.path.join(self.generated_path,"gp_params","class_{}.csv".format(str(self.class_nb))),sep=',',index=False)
             
-            else:
-                # sphere_params = pd.read_csv(os.path.join(self.generated_path,"gp_params","{}_gp_regression_best.csv".format(str(self.class_nb).rjust(2, '0'))))
-                # sphere_params = pd.read_csv(os.path.join(self.generated_path,"gp_params","{}_svm_multi_best.csv".format(str(self.class_nb).rjust(2, '0'))))
-                sphere_params = pd.read_csv(os.path.join(self.generated_path,"scenario_params","test_params_{}.csv".format(str(self.task_nb))))
-                mid_list = np.array([list(sphere_params[self.paramters_list[param]]) for param in range(self.nb_parameters) ]).T
-                self.X_bank = [mid_list[ii,:] for ii in range(mid_list.shape[0])]
-                self.start_time = time.time()
-                print("start learning GP regression")
-                self.validating_bbgan(valid_size=self.valid_size)
-                self.register_metrics()
+    #         else:
+    #             # sphere_params = pd.read_csv(os.path.join(self.generated_path,"gp_params","{}_gp_regression_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+    #             # sphere_params = pd.read_csv(os.path.join(self.generated_path,"gp_params","{}_svm_multi_best.csv".format(str(self.class_nb).rjust(2, '0'))))
+    #             sphere_params = pd.read_csv(os.path.join(self.generated_path,"scenario_params","test_params_{}.csv".format(str(self.task_nb))))
+    #             mid_list = np.array([list(sphere_params[self.paramters_list[param]]) for param in range(self.nb_parameters) ]).T
+    #             self.X_bank = [mid_list[ii,:] for ii in range(mid_list.shape[0])]
+    #             self.start_time = time.time()
+    #             print("start learning GP regression")
+    #             self.validating_bbgan(valid_size=self.valid_size)
+    #             self.register_metrics()
 
 
 
 
 
-                # if self.is_visualize:
-                #     self.visualize_bbgan(step=0)
+    # def learn_baysian(self):
+    #     from hyperopt import hp
+    #     from hyperopt.pyll.stochastic import sample
+    #     from hyperopt import rand, tpe
+    #     from hyperopt import Trials
+    #     from hyperopt import fmin
+    #     from hyperopt import STATUS_OK
+    #     tpe_trials = Trials()
+    #     tpe_algo = tpe.suggest
+    #     self.all_Ys = []
+    #     if not self.is_train:
+    #         self.all_Ys, missing_indices  = my_read_images(self.generated_frames_train_dir,self.OUT_SIZE,self.OUT_SIZE, extension='jpg',d_type=np.float32,normalize=True)
+    #     self.all_Xs = []
+    #     self.all_loss = []
+    #     vars_list  = ["x"+str(ii) for ii in range(self.nb_parameters)]
+    #     space = {}
+    #     for keys in vars_list:
+    #         space[keys] = hp.uniform(keys, -1, 1)
+
+    #     with tf.Graph().as_default() as self.g:
+    #         self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
+    #         self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
+    #         self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
+    #         self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
+    #         self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
+    #         self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
+    #         self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
+    #         self.focal_weights =self.oracle_scores ** self.gamma
+    #         self.focal_weights_avg = tf.reduce_mean(self.focal_weights)
+    #         self.y = tf.placeholder(tf.float32, [None,self.OUT_SIZE,self.OUT_SIZE, 3])
+
+    #         with tf.device('/GPU:0'):
+    #             with tf.variable_scope('detector'):
+    #                 detections = yolo_v3(self.y, len(self.coco_classes), data_format='NHWC')
+    #                 load_ops = load_weights(tf.global_variables(scope='detector'), self.weights_file)
+
+    #             self.boxes = detections_boxes(detections)
+
+    #         self.define_metrics()
+    #     with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
+    #         self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
+    #         tf.global_variables_initializer().run()
+    #         self.sess.run(load_ops)
+    #         self.start_time = time.time()
+    #         global ITERATION
+    #         ITERATION = 0
 
 
-    def learn_baysian(self):
-        from hyperopt import hp
-        from hyperopt.pyll.stochastic import sample
-        from hyperopt import rand, tpe
-        from hyperopt import Trials
-        from hyperopt import fmin
-        from hyperopt import STATUS_OK
-        tpe_trials = Trials()
-        tpe_algo = tpe.suggest
-        self.all_Ys = []
-        if not self.is_train:
-            self.all_Ys, missing_indices  = my_read_images(self.generated_frames_train_dir,self.OUT_SIZE,self.OUT_SIZE, extension='jpg',d_type=np.float32,normalize=True)
-        self.all_Xs = []
-        self.all_loss = []
-        vars_list  = ["x"+str(ii) for ii in range(self.nb_parameters)]
-        space = {}
-        for keys in vars_list:
-            space[keys] = hp.uniform(keys, -1, 1)
-
-        with tf.Graph().as_default() as self.g:
-            self.z = tf.placeholder(tf.float32, shape=[None,self.z_dim])
-            self.x_ind = tf.placeholder(tf.float32, shape=[None,self.nb_parameters])
-            self.oracle_labels = tf.placeholder(tf.float32, shape=[None,self.OUT_SIZE,self.OUT_SIZE, 3])
-            self.oracle_scores = tf.placeholder(tf.float32, shape=[None,])
-            self.success_rate = tf.to_float(tf.count_nonzero(tf.less(self.oracle_scores,self.SUCCESS_THRESHOLD)))/tf.constant(float(self.valid_size))
-            self.score_mean = tf.reshape(tf.nn.moments(self.oracle_scores,axes=0)[0],[])
-            self.input_variance = tf.reshape(tf.nn.moments(tf.nn.moments(self.x_ind,axes=0)[1],axes=0)[0],[])
-            self.focal_weights =self.oracle_scores ** self.gamma
-            self.focal_weights_avg = tf.reduce_mean(self.focal_weights)
-            self.y = tf.placeholder(tf.float32, [None,self.OUT_SIZE,self.OUT_SIZE, 3])
-
-            with tf.device('/GPU:0'):
-                with tf.variable_scope('detector'):
-                    detections = yolo_v3(self.y, len(self.coco_classes), data_format='NHWC')
-                    load_ops = load_weights(tf.global_variables(scope='detector'), self.weights_file)
-
-                self.boxes = detections_boxes(detections)
-
-            self.define_metrics()
-        with tf.Session(graph=self.g,config=tf.ConfigProto(gpu_options=self.gpu_options)) as self.sess:
-            self.writer = tf.summary.FileWriter(self.train_log_dir, self.sess.graph)
-            tf.global_variables_initializer().run()
-            self.sess.run(load_ops)
-            self.start_time = time.time()
-            global ITERATION
-            ITERATION = 0
+    #         def objective(xs):
+    #             ########### @@@@@@@@@@@@@@@@@ play with the uinput to make it vector !! 
+    #             global ITERATION
+    #             ITERATION += 1
+    #             keylist = xs.keys()
+    #             list(keylist).sort()
+    #             x = [xs[ii] for ii in keylist]
+    #             print("@@@@@@@@@@@@@","ITERATION : ", ITERATION)
+    #             # raise Exception
+    #             try:
+    #                 y = black_box(x,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+    #             except:
+    #                 try:
+    #                     y = black_box(x,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
+    #                 except:
+    #                     y = self.all_Ys[-1]
+    #             self.all_Ys.append(y)
+    #             self.all_Xs.append(x)
+    #             loss = np.squeeze(self.detector_agent(np.expand_dims(y, axis=0)))
+    #             self.all_loss.append(loss)
+    #             if ((ITERATION) % self.log_frq == 0):
+    #                 tpe_results = pd.DataFrame({'loss': self.all_loss, 'iteration': range(ITERATION),'x':self.all_Xs })
+    #                 tpe_results.to_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'),sep=',',index=False)
+    #             return {'loss': loss, 'xs': xs, 'iteration': ITERATION,'status': STATUS_OK}
 
 
-            def objective(xs):
-                ########### @@@@@@@@@@@@@@@@@ play with the uinput to make it vector !! 
-                global ITERATION
-                ITERATION += 1
-                keylist = xs.keys()
-                list(keylist).sort()
-                x = [xs[ii] for ii in keylist]
-                print("@@@@@@@@@@@@@","ITERATION : ", ITERATION)
-                # raise Exception
-                try:
-                    y = black_box(x,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
-                except:
-                    try:
-                        y = black_box(x,output_size=self.OUT_SIZE,global_step=self.task_nb,frames_path=self.frames_path,cluster=self.is_cluster,parent_name=self.pascal_list[self.class_nb],scenario_nb=self.scenario_nb)
-                    except:
-                        y = self.all_Ys[-1]
-                self.all_Ys.append(y)
-                self.all_Xs.append(x)
-                loss = np.squeeze(self.detector_agent(np.expand_dims(y, axis=0)))
-                self.all_loss.append(loss)
-                if ((ITERATION) % self.log_frq == 0):
-                    tpe_results = pd.DataFrame({'loss': self.all_loss, 'iteration': range(ITERATION),'x':self.all_Xs })
-                    tpe_results.to_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'),sep=',',index=False)
-                return {'loss': loss, 'xs': xs, 'iteration': ITERATION,'status': STATUS_OK}
+    #         if self.is_train:
+    #             tpe_best = fmin(fn=objective, space=space, algo=tpe_algo, trials=tpe_trials,max_evals=self.gendist_size, rstate= np.random.RandomState(50))
+    #             print('Minimum loss attained with TPE:    {:.4f}'.format(tpe_trials.best_trial['result']['loss']))
+    #             self.all_Xs = [[vars_dics[keys] for keys in vars_list]for vars_dics in [x['xs'] for x in tpe_trials.results]]
+    #             tpe_results = pd.DataFrame({'loss': [x['loss'] for x in tpe_trials.results], 'iteration': [x['iteration'] for x in tpe_trials.results],'x':self.all_Xs })
+    #             tpe_results.to_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'),sep=',',index=False)
+    #             with open(os.path.join(self.generated_frames_train_dir,"baysian.pkl"),'wb') as fp:
+    #                 cPickle.dump(tpe_results.to_dict(),fp)
 
 
-            if self.is_train:
-                tpe_best = fmin(fn=objective, space=space, algo=tpe_algo, trials=tpe_trials,max_evals=self.gendist_size, rstate= np.random.RandomState(50))
-                print('Minimum loss attained with TPE:    {:.4f}'.format(tpe_trials.best_trial['result']['loss']))
-                self.all_Xs = [[vars_dics[keys] for keys in vars_list]for vars_dics in [x['xs'] for x in tpe_trials.results]]
-                tpe_results = pd.DataFrame({'loss': [x['loss'] for x in tpe_trials.results], 'iteration': [x['iteration'] for x in tpe_trials.results],'x':self.all_Xs })
-                tpe_results.to_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'),sep=',',index=False)
-                with open(os.path.join(self.generated_frames_train_dir,"baysian.pkl"),'wb') as fp:
-                    cPickle.dump(tpe_results.to_dict(),fp)
+    #         self.evolve_step=0
+    #         try:
+    #             with open(os.path.join(self.generated_frames_train_dir,"baysian.pkl"),'rb') as fp:
+    #                 tpe_results = pd.DataFrame(cPickle.load(fp))
+    #             self.all_Xs = list(tpe_results["x"]) 
+    #         except:
+    #             tpe_results = pd.read_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'))
+    #             self.all_Xs = [string_to_float_list(a) for a in list(tpe_results["x"]) ]
 
+    #         self.X_bank = self.X_bank + self.all_Xs[-self.induced_size:]
+    #         self.Y_bank = self.Y_bank + self.all_Ys[-self.induced_size:]
 
-            self.evolve_step=0
-            try:
-                with open(os.path.join(self.generated_frames_train_dir,"baysian.pkl"),'rb') as fp:
-                    tpe_results = pd.DataFrame(cPickle.load(fp))
-                self.all_Xs = list(tpe_results["x"]) 
-            except:
-                tpe_results = pd.read_csv(os.path.join(self.generated_frames_train_dir,'baysian.csv'))
-                self.all_Xs = [string_to_float_list(a) for a in list(tpe_results["x"]) ]
-
-            self.X_bank = self.X_bank + self.all_Xs[-self.induced_size:]
-            self.Y_bank = self.Y_bank + self.all_Ys[-self.induced_size:]
-
-            if not self.is_train:
-                with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
-                    saved_dict = cPickle.load(fp)
-                self.all_Xs = saved_dict["x"] 
-            print("start learning mixture of gaussians for the baysian")
-            self.validating_bbgan(valid_size=self.valid_size)
-            self.register_metrics()
-            if self.is_visualize:
-                self.visualize_bbgan(step=0)
+    #         if not self.is_train:
+    #             with open(os.path.join(self.generated_frames_train_dir,"save.pkl"),'rb') as fp:
+    #                 saved_dict = cPickle.load(fp)
+    #             self.all_Xs = saved_dict["x"] 
+    #         print("start learning mixture of gaussians for the baysian")
+    #         self.validating_bbgan(valid_size=self.valid_size)
+    #         self.register_metrics()
+    #         if self.is_visualize:
+    #             self.visualize_bbgan(step=0)
 
 
 

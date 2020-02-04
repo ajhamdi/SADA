@@ -12,7 +12,7 @@ tf.app.flags.DEFINE_string('exp_type', 'Adversarial', 'the experiment type')
 tf.app.flags.DEFINE_string('weights_file', 'yolov3.weights', 'Binary file with detector weights')
 
 tf.app.flags.DEFINE_integer('scenario_nb', 0, 'the scenario of training , data generation to follow  ')
-tf.app.flags.DEFINE_integer('dataset_nb', 2, 'the dataset ID number used  ')
+tf.app.flags.DEFINE_integer('dataset_nb', 0, 'the dataset ID number used  ')
 tf.app.flags.DEFINE_integer('exp_no', 0, 'the exp number used ')
 tf.app.flags.DEFINE_integer('nb_parameters', 8, 'the number of paramters learnt by BBGNA ')
 tf.app.flags.DEFINE_integer('class_nb', 0, 'the class number used ')
@@ -52,71 +52,62 @@ tf.app.flags.DEFINE_boolean('full_set',True," use the full set once in the train
 
 
     
-def randomize_setup(flags):
-    exp_type_list = ["Adversarial","Gaussian","Baysian","Finite","GP"]
-    scenario_nb_list = list(range(1,10))
-    class_nb_list = list(range(11))
-    gaussian_nb_list = list(range(1,flags.valid_size))
-    evolution_nb_list = [1,2,3]
-    K_list = list(range(2,20))
-    z_dim_list = list(range(1,8))
-    network_size_list = list(range(0,2))
-    induced_size_list = list(range(300,600))
-    nb_steps_list = list(range(250,620))
-    variamce_list = list(np.linspace(0.05,0.07,20))
-    learning_rate_list  = list(np.linspace(0.0001,0.0004,20))
+# def randomize_setup(flags):
+#     exp_type_list = ["Adversarial","Gaussian","Baysian","Finite","GP"]
+#     scenario_nb_list = list(range(1,10))
+#     class_nb_list = list(range(11))
+#     gaussian_nb_list = list(range(1,flags.valid_size))
+#     evolution_nb_list = [1,2,3]
+#     K_list = list(range(2,20))
+#     z_dim_list = list(range(1,8))
+#     network_size_list = list(range(0,2))
+#     induced_size_list = list(range(300,600))
+#     nb_steps_list = list(range(250,620))
+#     variamce_list = list(np.linspace(0.05,0.07,20))
+#     learning_rate_list  = list(np.linspace(0.0001,0.0004,20))
 
-    # flags.exp_type = np.random.choice(exp_type_list)
-    # flags.class_nb = np.random.choice(class_nb_list)
-    # flags.gaussian_nb = np.random.choice(gaussian_nb_list)
-    # flags.evolution_nb  = np.random.choice(evolution_nb_list)
-    # flags.K = np.random.choice(K_list)
-    flags.z_dim = np.random.choice(z_dim_list)
-    flags.network_size = np.random.choice(network_size_list)
-    flags.induced_size = np.random.choice(induced_size_list)
-    flags.nb_steps = np.random.choice(nb_steps_list)
-    # flags.gan_init_variance = np.random.choice(variamce_list)
-    flags.learning_rate_g = np.random.choice(learning_rate_list)
-    flags.learning_rate_t = flags.learning_rate_g
+#     flags.z_dim = np.random.choice(z_dim_list)
+#     flags.network_size = np.random.choice(network_size_list)
+#     flags.induced_size = np.random.choice(induced_size_list)
+#     flags.nb_steps = np.random.choice(nb_steps_list)
+#     flags.learning_rate_g = np.random.choice(learning_rate_list)
+#     flags.learning_rate_t = flags.learning_rate_g
 
 def main(argv=None):
     base_path = os.getcwd()
-    if FLAGS.is_cluster and FLAGS.is_randomize :
-        randomize_setup(flags=FLAGS)
-        # raise Exception("###############")
-    if FLAGS.is_cluster:
-        pass
+    # if FLAGS.is_cluster and FLAGS.is_randomize :
+    #     randomize_setup(flags=FLAGS)
+    # if FLAGS.is_cluster:
+    #     pass
 
     bbexp = BlackBoxOptimizer(FLAGS = FLAGS,base_path=base_path)
     
     if FLAGS.is_gendist:
             bbexp.generate_distribution()
-    elif FLAGS.is_genset:
-            bbexp.generate_set()
-    elif FLAGS.is_genknn:
-            bbexp.generated_nearest_neighbor()
+    # elif FLAGS.is_genset:
+    #         bbexp.generate_set()
+    # elif FLAGS.is_genknn:
+    #         bbexp.generated_nearest_neighbor()
 
     elif FLAGS.exp_type == "Adversarial":
         if FLAGS.is_train or FLAGS.cont_train:
-            if not FLAGS.is_selfdrive:
-                bbexp.learn_bbgan()
-            else :
-                bbexp.learn_selfdrive()
+            # if not FLAGS.is_selfdrive:
+            bbexp.learn_bbgan()
+            # else :
+            #     bbexp.learn_selfdrive()
     elif FLAGS.exp_type == "Gaussian":
         FLAGS.is_gaussian = True
         bbexp.learn_gaussian()
 
-    elif FLAGS.exp_type == "GP":
-        FLAGS.is_gp = True
-        bbexp.learn_gp()
+    # elif FLAGS.exp_type == "GP":
+    #     FLAGS.is_gp = True
+    #     bbexp.learn_gp()
 
 
-    elif FLAGS.exp_type == "Baysian":
-        FLAGS.is_baysian = True
-        bbexp.learn_baysian()
+    # elif FLAGS.exp_type == "Baysian":
+    #     FLAGS.is_baysian = True
+    #     bbexp.learn_baysian()
     
-    # bbexp.learn_distribution_random()
-    # bbexp.learn_distribution_gan()
 
 if __name__ == '__main__':
     tf.app.run()

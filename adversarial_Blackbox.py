@@ -58,37 +58,8 @@ def sample_from_learned_gaussian(points_to_learn,n_components=1,n_samples=10,is_
         return gmm.sample(n_samples=n_samples)[0]  #, gmm.means_, gmm.covariances
 
 
-def objective_function(x,output_size):
-    hidden = slim.fully_connected(x, 10, scope='objective/fc_1')
-    output = slim.fully_connected(hidden, 2*output_size, scope='objective/fc_2')
-    output = slim.fully_connected(output, 3*output_size, scope='objective/fc_3')
-    output = slim.fully_connected(output, 3*output_size, scope='objective/fc_4')
-    output = slim.fully_connected(output, output_size,activation_fn=None, scope='objective/fc_5')
 
-    return output
 
-def dicrminator_cnn(x,conv_input_size, output_size, repeat_num ,reuse=False):
-    with tf.variable_scope("oracle") as scope:
-        if reuse:
-            scope.reuse_variables()
-        # Encoder
-        x = slim.conv2d(x, conv_input_size, 3, 1, activation_fn=tf.nn.elu)
-
-        prev_channel_num = conv_input_size
-        for idx in range(repeat_num):
-            channel_num = conv_input_size * (idx + 1)
-            x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu)
-            x = slim.conv2d(x, channel_num, 3, 1, activation_fn=tf.nn.elu)
-            if idx < repeat_num - 1:
-                x = slim.conv2d(x, channel_num, 3, 2, activation_fn=tf.nn.elu)
-                #x = tf.contrib.layers.max_pool2d(x, [2, 2], [2, 2], padding='VALID')
-
-        # x = tf.reshape(x, [-1, np.prod([8, 8, channel_num])])
-        # x = tf.reshape(x, [x.shape[0], -1])
-        x = slim.flatten(x)
-        z = slim.fully_connected(x, output_size, activation_fn=None)
-        z_prob = tf.nn.sigmoid(z)
-        return z , z_prob
 
 def string_to_float_list(A):
     return [float(x) for x in A[1:-1].split(',')]

@@ -4,7 +4,6 @@ import os
 import matplotlib.pyplot as plt
 #from pylab import *
 import numpy as np
-import IPython
 from sklearn import cluster
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial import distance
@@ -14,10 +13,6 @@ from sklearn.preprocessing import StandardScaler
 #import matplotlib.cbook as cbook
 import time
 import sys
-# from skimage import  io
-# from skimage.transform import rescale, resize, downscale_local_mean
-from scipy.misc import imread
-from scipy.misc import imresize
 import scipy.io as sio
 from scipy import ndimage , misc
 from scipy import stats
@@ -31,6 +26,81 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 
 from utils import *
+
+from sklearn import mixture
+
+
+def function_batches(function, input_list=range(1000), slice_size=100):
+    full_output = []
+    x_batches = [input_list[ii:ii+slice_size]
+                 for ii in range(0, len(input_list), slice_size)]
+    # if len(input_list) % self.slice_size != 0 :
+    #     x_batches.pop()
+    for ii in range(len(x_batches)):
+        full_output.append(function(x_batches[ii]))
+    return full_output
+# a function that applies the function in the argument ( which accepts athe list of inputs ) as batches and returen a list of batched output 7
+
+
+def black_box(input_vector, output_size=256, global_step=0, frames_path=None, cluster=False, parent_name='car', scenario_nb=0):
+    b = Blender(cluster, 'init.py', '3d/training_pascal/training.blend')
+    b.city_experiment(obj_name="myorigin", vec=np.array(
+        input_vector).tolist(), parent_name=parent_name, scenario_nb=scenario_nb)
+    b.save_image(output_size, output_size,
+                 path=frames_path, name=str(global_step))
+    # b.save_file()
+    b.execute()
+    image = cv2.imread(os.path.join(frames_path, str(global_step)+".jpg"))
+    image = forward_transform(cv2.cvtColor(
+        image, cv2.COLOR_BGR2RGB).astype(np.float32))
+    return image
+
+
+def black_box_batch(input_vectors, output_size=256, global_step=0, frames_path=None, cluster=False, parent_name='car', scenario_nb=0):
+    images = []
+    for input_vector in input_vectors:
+        try:
+            images.append(black_box(np.array(input_vector), output_size,
+                                    global_step, frames_path, cluster, parent_name, scenario_nb))
+            # images.append(black_box(np.array(input_vector),output_size,len(images),frames_path,cluster,parent_name,scenario_nb))
+
+        except:
+            continue
+    # print("&&&&&&&&&&&&&&&&&&&&&\n\n",np.linalg.norm(np.mean(np.array(images) - np.broadcast_to(np.mean(np.array(images),axis=0),np.array(images).shape),axis=2),ord="fro"))
+    return images
+
+
+def normalize_vectors_list(vector_list, old_max, old_min, new_max, new_min):
+    old_range = old_max - old_min
+    new_range = new_max - new_min
+    range_ratio = new_range / old_range
+    matrix = np.array(vector_list)
+    matrix = np.broadcast_to(new_min, matrix.shape) + (matrix - np.broadcast_to(
+        old_min, matrix.shape)) * np.broadcast_to(range_ratio, matrix.shape)
+    return list(matrix)
+
+
+
+def sample_from_learned_gaussian(points_to_learn, n_components=1, n_samples=10, is_truncate=True, is_reject=False, min_value=-1, max_value=1):
+    gmm = mixture.GaussianMixture(
+        n_components=n_components, covariance_type='full', max_iter=50000).fit(points_to_learn)
+    if is_truncate:
+        return np.clip(gmm.sample(n_samples=n_samples)[0], min_value, max_value)
+    elif is_reject:
+        sample_list = []
+        MAX_ITER = 100000000
+        iteration = 0
+        a = list(gmm.sample(n_samples=100*n_samples)[0])
+        while len(sample_list) < n_samples and iteration < MAX_ITER:
+            if (a[iteration] >= min_value).all() and (a[iteration] <= max_value).all():
+                sample_list.append(a[iteration])
+            iteration += 1
+        return np.array(sample_list)
+    else:
+        # , gmm.means_, gmm.covariances
+        return gmm.sample(n_samples=n_samples)[0]
+
+
 
 try:
   image_summary = tf.image_summary

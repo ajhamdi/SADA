@@ -3,8 +3,8 @@
 <br><br><br><br>
 
 # SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications
-### [Paper](https://arxiv.org/pdf/1812.02132.pdf)<br>
-Tensorflow implementation of [the paper](https://arxiv.org/abs/1812.02132) in [AAAI 2020](http://xai.unist.ac.kr/workshop/2019/). The paper tries to address the robustness of Deep Neeural Networks, but not from pixel-level perturbation lense, rather from semantic lense in which the perturbation happens in the latent parameters that generate the image. This type of robustness is important for safety-critical applications like self-driving cars in which tolerance of error is very low and risk of failure is high. <br><br>
+### [Paper](https://arxiv.org/pdf/1812.02132.pdf) |  [video](https://youtu.be/clguL24kVG0)  <br>
+Tensorflow implementation of [the paper](https://arxiv.org/abs/1812.02132) in [AAAI 2020](https://aaai.org/Conferences/AAAI-20/). The paper tries to address the robustness of Deep Neeural Networks, but not from pixel-level perturbation lense, rather from semantic lense in which the perturbation happens in the latent parameters that generate the image. This type of robustness is important for safety-critical applications like self-driving cars in which tolerance of error is very low and risk of failure is high. <br><br>
 [SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications](https://arxiv.org/pdf/1812.02132.pdf)  
  [Abdullah Hamdi](https://abdullahamdi.com/), [Matthias Muller](https://matthias.pw/), [Bernard Ghanem](http://www.bernardghanem.com/)
 
@@ -62,12 +62,12 @@ If you find this useful for your research, please use the following.
 
 ## Getting Started
 ### Installation
-- install [Blender](https://www.blender.org/download/releases/2-79/) and then run the following commans 
+- install [Blender](https://www.blender.org/download/releases/2-79/) with the version `blender-2.79b-linux-glibc219-x86_64` and add it to your `PATH` by adding the command `export PATH="${PATH}:/home/PATH/TO/blender-2.79b-linux-glibc219-x86_64"` in `/home/.bashrc` file . make sure at the end that you can run `blender` command from your shell script. 
+
+- install the following `conda` environment as follows: 
 ```bash
 conda env create -f environment.yaml
-source activate semantic
-conda install -c anaconda cudatoolkit==9.0
-pip install git+https://github.com/daniilidis-group/neural_renderer
+conda activate activate sada
 ```
 - Clone this repo:
 ```bash

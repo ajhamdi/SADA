@@ -6,6 +6,8 @@ import json
 import random
 import logging
 import numpy as np
+from PIL import Image, ImageDraw
+
 from PIL import Image
 import cv2
 import tensorflow as tf
@@ -13,6 +15,26 @@ from datetime import datetime
 import scipy
 from numbers import Number
 from subprocess import Popen, PIPE
+
+
+def draw_boxes(boxes, img, cls_names, detection_size):
+    draw = ImageDraw.Draw(img)
+
+    for cls, bboxs in boxes.items():
+        # color = tuple(np.random.randint(0, 256, 3))
+        color = tuple(255, 0, 0)
+        for box, score in bboxs:
+            box = convert_to_original_size(
+                box, np.array(detection_size), np.array(img.size))
+            draw.rectangle(box, outline=color)
+            draw.text(box[:2], '{} {:.2f}%'.format(
+                cls_names[cls], score * 100), fill=color)
+
+
+def convert_to_original_size(box, size, original_size):
+    ratio = original_size / size
+    box = box.reshape(2, 2) * ratio
+    return list(box.reshape(-1))
 
 
 def random_lhs(min_bound,max_bound,dimensions,number_samples=1):
@@ -397,6 +419,29 @@ def match_two_dictionaries(dict1,dict2):
     return result_dict
     
 # https://medium.com/ymedialabs-innovation/data-augmentation-techniques-in-cnn-using-tensorflow-371ae43d5be9
+
+
+
+
+def prepare_config_dict(mydict,ommit_list=[]):
+    for k in ommit_list:
+        mydict.pop(k, None)
+    for k ,v in mydict.items():
+        if isinstance(v, bool):
+            mydict[k] = int(v)
+    return mydict
+
+
+def string_to_float_list(A):
+    return [float(x) for x in A[1:-1].split(',')]
+
+
+def check_folder(data_dir):
+    """
+    checks if folder exists and create if doesnt exist
+    """
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir)
 
 
 def load_dataset_names(file_name):

@@ -1,4 +1,4 @@
-<img src='.//results/teapot.jpg' align="right" width=500>
+<img src='.//examples/intro.png' align="right" width=500>
 <img src='./some_examples/robustness_out.gif' align="center" width=250>  
 <br><br><br><br>
 
@@ -30,30 +30,6 @@ If you find this useful for your research, please use the following.
 }
 ```
 
-## Examples of Results
-- ### visualizing the Deep networks average semantic profiles (1D) for 10 objects for 10 classes.
-<img src='./results/toilet.jpg' align="center" width=500>
-
-- ### Detecting robust regions of the networks with bounds-optimzing algorithms (1D).
-<p float="left">
-<img src='./some_examples/optimization1_video.gif' width=480 /> 
-<img src='./results/run_120.jpg' width=380 />
-</p>
-
-- ### visualizing the Deep networks semantic profiles (2D) for 100 objects from 10 classes.
-<p float="left">
-<img src='./some_examples//myfull.gif' width=300>          
-<img src='./results/bathtub2map.png' width=480>
-</p>
-
-- ### Detecting robust regions of the networks with bounds-optimzing algorithms (2D).
-<img src='./results/bathtub2D.png' align="center" width=500>
-
-
-- ### Visualizinfg the semantic bias in [ImageNet](http://www.image-net.org/) dataset for 10 differnt classes.
-<img src='./results/rifle.png' align="center" width=500>
-
-
 ## Prerequisites
 - Linux 
 - Python 2 or 3
@@ -71,29 +47,27 @@ conda activate activate sada
 ```
 - Clone this repo:
 ```bash
-git clone https://github.com/ajhamdi/semantic-robustness
-cd semantic-robustness
+git clone https://github.com/ajhamdi/SADA
+cd SADA
 ```
 
-
-### Simple Colab Tutorial with a toy example:
-We provide a simple tutorial on colab [here](https://colab.research.google.com/drive/1cZzTPu1uwftnRLqtIIjjqw-YZSKh4QYn) to test a toy example on some 3D objects and apply the bound optimzation algorithms for sample points in the 1D case directly on the cloud. The complete results obtained in the `results` directory are obtained as of the following sections  
+- Download the dataset that contains the 3D shapes and the environments from [this link](https://drive.google.com/drive/folders/1IFKOivjYXBQOhnc2WV7E4hipxCtSoB4u?usp=sharing) and place the folder in the same project dir with name `3d/training_pascal`. 
 
 
 ### Dataset
-- We collect 100 3D shapes from 10 classes from [ShapeNet](https://www.shapenet.org/) that are also exist in [ImagNet](http://www.image-net.org/) and made sure that networks trained on ImageNEt identifies these shapes of ShapeNet nefore proceeding. All the obj files are availabe in the `sacale` directory which contain the dataset. The classes are the following 
-1. **aeroplane** : with ImageNet class label 404
-1. **bathtub** : with ImageNet class label 435
-1. **bench** : with ImageNet class label 703
-1. **bottle** : with ImageNet class label 898
-1. **chair** : with ImageNet class label 559
-1. **cup** : with ImageNet class label 968
-1. **piano** : with ImageNet class label 579
-1. **rifle** : with ImageNet class label 413
-1. **vase** : with ImageNet class label 883
-1. **toilet** : with ImageNet class label 861
-#### visualization:
-<img src='./results/class_0_.gif' width=150>  <img src='./results/class_1_.gif' width=150>  <img src='./results/class_2_.gif' width=150>  <img src='./results/class_3_.gif' width=150>  <img src='./results/class_4_.gif' width=150>  <img src='./results/class_5_.gif' width=150> <img src='./results/class_6_.gif' width=150>  <img src='./results/class_7_.gif' width=150> <img src='./results/class_8_.gif' width=150>  <img src='./results/class_9_.gif' width=150> 
+- We collect 100 3D shapes from 10 classes from [ShapeNet](https://www.shapenet.org/) and Pascal3D . All the sahpes are available inside the blender environment `3d/training_pascal/training.blend` file. The classes are the following 
+1. **aeroplane** 
+1. **bench** 
+1. **bicycle**
+1. **boat**
+1. **bottle** 
+1. **bus** 
+1. **car** 
+1. **chair** 
+1. **dining table** 
+1. **motorbike** 
+1. **train** 
+1. **truck** 
 
 <br>
 # BLACK BOX GAN

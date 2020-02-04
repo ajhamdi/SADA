@@ -1,5 +1,4 @@
 <img src='.//examples/intro.png' align="right" width=500>
-<img src='./some_examples/robustness_out.gif' align="center" width=250>  
 <br><br><br><br>
 
 # SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications
@@ -53,6 +52,9 @@ cd SADA
 
 - Download the dataset that contains the 3D shapes and the environments from [this link](https://drive.google.com/drive/folders/1IFKOivjYXBQOhnc2WV7E4hipxCtSoB4u?usp=sharing) and place the folder in the same project dir with name `3d/training_pascal`. 
 
+- Download the weights for YOLOv3 from [this link](https://drive.google.com/file/d/1FeHobYulruf98ZOnWVpmqK8vza2u6MX-/view?usp=sharing) and place in the `detectos` dir. 
+
+<br><br>
 
 ### Dataset
 - We collect 100 3D shapes from 10 classes from [ShapeNet](https://www.shapenet.org/) and Pascal3D . All the sahpes are available inside the blender environment `3d/training_pascal/training.blend` file. The classes are the following 
@@ -69,27 +71,45 @@ cd SADA
 1. **train** 
 1. **truck** 
 
+- The parameters that control the environment are 8 as follows  
+1. **camera distance to the object** 
+1. **camera azimuth angle** 
+1. **camera pitch angle** 
+1. **light source azimuth angle** 
+1. **light source pitch angle** 
+1. **color of the object (R-channel)** 
+1. **color of the object (G-channel)** 
+1. **color of the object (B-channel)** 
+
+
 <br>
-# BLACK BOX GAN
 
-please Matthias use the following comman to learn the paramters in the selfdriving folder 
+## Gebnerating images from the 3D environment for a specific class with random parameters and storing the 2D dataset in the folder `generated` 
 
 ```
-python main.py --is_selfdrive=True --is_train=True --valid_size=50 --log_frq=10 --batch_size=64 --induced_size=50 --nb_paramters=3 --nb_steps=600  --learning_rate_t=0.0001 --learning_rate_g=0.0001
+python main.py --is_gendist=True --class_nb= 0 --dataset_nb= 0 --gendist_size= 10000
 ```
-* `valid_size` : is the number of paramters u will be generating eventually <br>
-* `nb_paramters` is the nuber of parameters per sample ... 3 here <br>
-* `nb_steps` : is the number of training steps of teh GAN <br>
-* `log_frq=10` : how often u save the weights of teh network<br>
-* `induced_size`: is the number of best samples that will be picked out of the total number u have in input.csv <br>
+* `is_gendist` : is the option to generate distribution of parameters and images  <br>
+* `class_nb` the class of the 12 classes above to generate  <br>
+* `dataset_nb` : is the number assigned to the dataset generated  <br>
+* `gendist_size` : the number of inages generated  <br>
 <br><br>
-## where do play in the code ?
-U will find the function `learn_selfdrive()` part of teh main class has your part ... please play only here to make our code exclusive 
-<br>
-## how to load the trained model and use the discrminator score ?
-I just added that as `self.cont_train` option , in your `learn_selfdrive()` function , so just use the following command .. it will used the latest training model and randomly sample `FLAGS.K * FLAGS. indiced_size ` sample and sort them based on discrminator score , pick the best and worst `Induced_size` paramters and store them in the csv files in the self_drive folder.
-<br>
-use the following command please.. I have not tested it but it should work !  
+
+
+## training BBGAN
+ 
+
 ```
-python main.py --is_selfdrive=True --is_train=False --cont_train=True --valid_size=50 --log_frq=10 --batch_size=64 --induced_size=50 --nb_paramters=3 --nb_steps=600  --learning_rate_t=0.0001 --learning_rate_g=0.0001
+python main.py --is_train=True --valid_size=50 --log_frq=10 --batch_size=32 --induced_size=50 --nb_steps=600  --learning_rate_t=0.0001 --learning_rate_g=0.0001
 ```
+* `class_nb` the class of the 12 classes above to generate  <br>
+* `dataset_nb` : is the number assigned to the dataset generated  <br>
+* `nb_steps` : is the number of training steps of the GAN <br>
+* `log_frq=10` : how often u save the weights of the network<br>
+* `induced_size`: is the number of best samples that will be picked out of the total numberof generated images  <br>
+* `learning_rate_g`: the learning rate forf the generator
+* `learning_rate_t`: the learning rate forf the discrminator
+* `valid_size` : is the number of paramters u will be generating eventually for evaluation of the BBGAN <br>
+
+
+<br><br>

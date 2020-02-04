@@ -103,6 +103,8 @@ class BlackBoxOptimizer(object):
         self.OUT_SIZE = 340
         self.generation_bound = 0.01
 
+
+        self.gan_init_variance = 0.01
         self.conf_threshold=0.05
         self.SUCCESS_THRESHOLD = 0.3
         self.iou_threshold=0.4

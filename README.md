@@ -39,15 +39,16 @@ If you find this useful for your research, please use the following.
 ### Installation
 - install [Blender](https://www.blender.org/download/releases/2-79/) with the version `blender-2.79b-linux-glibc219-x86_64` and add it to your `PATH` by adding the command `export PATH="${PATH}:/home/PATH/TO/blender-2.79b-linux-glibc219-x86_64"` in `/home/.bashrc` file . make sure at the end that you can run `blender` command from your shell script. 
 
-- install the following `conda` environment as follows: 
-```bash
-conda env create -f environment.yaml
-conda  activate sada
-```
 - Clone this repo:
 ```bash
 git clone https://github.com/ajhamdi/SADA
 cd SADA
+```
+
+- install the following `conda` environment as follows: 
+```bash
+conda env create -f environment.yaml
+conda  activate sada
 ```
 
 - Download the dataset that contains the 3D shapes and the environments from [this link](https://drive.google.com/drive/folders/1IFKOivjYXBQOhnc2WV7E4hipxCtSoB4u?usp=sharing) and place the folder in the same project dir with name `3d/training_pascal`. 
@@ -113,3 +114,14 @@ python main.py --is_train=True --valid_size=50 --log_frq=10 --batch_size=32 --in
 
 
 <br><br>
+
+## Self-Driving with [CARLA](http://carla.org/)
+
+* coming soon
+
+<br><br>
+
+
+## UAV racing with [Sim4CV](https://sim4cv.org/)
+
+* coming soon

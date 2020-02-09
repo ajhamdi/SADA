@@ -2,9 +2,9 @@
 <br><br><br><br>
 
 # SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications
-### [Paper](https://arxiv.org/pdf/1812.02132.pdf) |  [video](https://youtu.be/clguL24kVG0)  <br>
+### [Paper](https://aaai.org/Papers/AAAI/2020GB/AAAI-HamdiA.1281.pdf) |  [video](https://youtu.be/clguL24kVG0)  <br>
 Tensorflow implementation of [the paper](https://arxiv.org/abs/1812.02132) in [AAAI 2020](https://aaai.org/Conferences/AAAI-20/). The paper tries to address the robustness of Deep Neeural Networks, but not from pixel-level perturbation lense, rather from semantic lense in which the perturbation happens in the latent parameters that generate the image. This type of robustness is important for safety-critical applications like self-driving cars in which tolerance of error is very low and risk of failure is high. <br><br>
-[SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications](https://arxiv.org/pdf/1812.02132.pdf)  
+[SADA: Semantic Adversarial Diagnostic Attacks for Autonomous Applications](https://aaai.org/Papers/AAAI/2020GB/AAAI-HamdiA.1281.pdf)  
  [Abdullah Hamdi](https://abdullahamdi.com/), [Matthias Muller](https://matthias.pw/), [Bernard Ghanem](http://www.bernardghanem.com/)
 
 ## Citation
@@ -12,20 +12,13 @@ Tensorflow implementation of [the paper](https://arxiv.org/abs/1812.02132) in [A
 If you find this useful for your research, please use the following.
 
 ```
-@article{DBLP:journals/corr/abs-1812-02132,
-  author    = {Abdullah Hamdi and
-               Matthias M{\"{u}}ller and
+@inproceedings{hamdi2020sada,
+ title = {{SADA:} Semantic Adversarial Diagnostic Attacks for Autonomous Applications},
+ author = {Abdullah Hamdi and
+               Matthias Muller and
                Bernard Ghanem},
-  title     = {{SADA:} Semantic Adversarial Diagnostic Attacks for Autonomous Applications},
-  journal   = {CoRR},
-  volume    = {abs/1812.02132},
-  year      = {2018},
-  url       = {http://arxiv.org/abs/1812.02132},
-  archivePrefix = {arXiv},
-  eprint    = {1812.02132},
-  timestamp = {Fri, 15 Nov 2019 17:16:40 +0100},
-  biburl    = {https://dblp.org/rec/bib/journals/corr/abs-1812-02132},
-  bibsource = {dblp computer science bibliography, https://dblp.org}
+ booktitle = {AAAI Conference on Artificial Intelligence},
+ year = 2020
 }
 ```
 

@@ -11,7 +11,7 @@ Tensorflow implementation of [the paper](https://arxiv.org/abs/1812.02132) in [A
 
 If you find this useful for your research, please use the following.
 
-```
+```bibtex
 @inproceedings{hamdi2020sada,
  title = {{SADA:} Semantic Adversarial Diagnostic Attacks for Autonomous Applications},
  author = {Abdullah Hamdi and
